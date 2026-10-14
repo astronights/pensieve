@@ -79,3 +79,25 @@ test("settings page saves values", async ({ page, context }) => {
   await page.getByRole("link", { name: "Decks" }).click();
   await expect(page.getByRole("heading", { name: "Pensieve" })).toBeVisible();
 });
+
+test("appearance can be forced to light or dark and is remembered", async ({ page, context }) => {
+  await context.request.post("/api/login", { data: { passcode: PASSCODE } });
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/settings");
+  const html = page.locator("html");
+  await expect(html).not.toHaveAttribute("data-theme", /.*/);
+
+  await page.getByRole("button", { name: "Dark" }).click();
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(await bg()).toBe("rgb(12, 10, 9)");
+
+  // Remembered across reloads and pages (rendered by the server, no flash).
+  await page.goto("/");
+  await expect(html).toHaveAttribute("data-theme", "dark");
+
+  await page.goto("/settings");
+  await page.getByRole("button", { name: "System" }).click();
+  await expect(html).not.toHaveAttribute("data-theme", /.*/);
+  expect(await bg()).toBe("rgb(250, 250, 249)");
+});

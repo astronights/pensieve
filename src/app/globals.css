@@ -13,8 +13,26 @@
   --on-accent: #ffffff;
 }
 
+/* Theme: follows the system unless <html data-theme="light|dark"> is set (Settings → Appearance). */
+:root[data-theme="light"] { color-scheme: light; }
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0c0a09;
+  --fg: #f5f5f4;
+  --muted: #a8a29e;
+  --card: #1c1917;
+  --border: #292524;
+  --accent: #818cf8;
+  --again: #f87171;
+  --hard: #fbbf24;
+  --good: #4ade80;
+  --easy: #60a5fa;
+  --on-accent: #0c0a09;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0c0a09;
     --fg: #f5f5f4;
     --muted: #a8a29e;
@@ -207,3 +225,26 @@ select {
 }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
 .success { color: var(--good); margin: 0; }
+
+/* Appearance picker */
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.segmented button { min-height: 44px; border: none; background: transparent; font-weight: 600; color: var(--muted); }
+.segmented button[aria-pressed="true"] { background: var(--card); color: var(--fg); box-shadow: 0 1px 3px rgb(0 0 0 / 0.15); }
+
+/* Loading skeletons (shown instantly on navigation while the page loads) */
+.skeleton {
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--card) 25%, var(--border) 50%, var(--card) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }

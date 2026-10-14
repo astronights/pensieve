@@ -160,7 +160,12 @@ export default function Study({ deckId, category, season }: Props) {
       </header>
 
       {error && <p className="error">{error}</p>}
-      {!data && !error && <p className="muted">Loading…</p>}
+      {!data && !error && (
+        <>
+          <div className="skeleton" aria-label="Loading" style={{ flex: 1, minHeight: "50dvh", borderRadius: 16 }} />
+          <div className="skeleton" style={{ height: 64 }} />
+        </>
+      )}
       {data && !card && (
         <p className="muted">
           Nothing left in {data.deck.name} right now. <Link href="/">Back to decks</Link>
