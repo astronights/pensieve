@@ -38,8 +38,8 @@ vercel --prod                    # deploy
 
 Vercel runs the `vercel-build` script, which applies any pending migrations in `./drizzle`
 (`npm run db:deploy`) and then runs `next build`, so a fresh Neon database gets its tables on the
-first deploy. Set `SEED_DEMO=1` in Vercel to also load the 20 demo cards (safe to leave on: it
-upserts and never resets progress). If `DATABASE_URL_UNPOOLED` is set it is used for migrations.
+first deploy. Set `SEED_DEMO=1` to also load the 20 demo cards (CI does this for the end-to-end tests).
+Migration `0003_remove_demo` deleted the demo decks from existing databases. If `DATABASE_URL_UNPOOLED` is set it is used for migrations.
 
 The app connects with node-postgres (`pg`) everywhere: Neon, local Postgres and CI use the same driver.
 
