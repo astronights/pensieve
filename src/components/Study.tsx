@@ -4,10 +4,15 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NextResult } from "@/lib/queue";
 import BackLink from "./BackLink";
+import { cardExtras } from "@/lib/card-extras";
+import Markdown from "./Markdown";
 import { MediaList } from "./Media";
 
 type Props = { deckId: string; category?: string; season?: string };
 type Counts = NextResult["counts"];
+
+/** Text longer than this reads better left-aligned at body size than as a big centred word. */
+const LONG_TEXT = 80;
 
 const RATINGS = [
   { value: 1, label: "Again", cls: "again" },
@@ -67,6 +72,16 @@ export default function Study({ deckId, category, season }: Props) {
 
   const card = data?.card ?? null;
   const cardId = card?.id;
+
+  // On reveal, bring the answer into view if it starts below the middle of the screen.
+  const answerRef = useRef<HTMLHRElement>(null);
+  useEffect(() => {
+    const el = answerRef.current;
+    if (!revealed || !el) return;
+    if (el.getBoundingClientRect().top > window.innerHeight * 0.5) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [revealed, view]);
 
   // Prefetch the card after this one as soon as it's on screen.
   useEffect(() => {
@@ -144,6 +159,7 @@ export default function Study({ deckId, category, season }: Props) {
   }, [busy, card, revealed, answer]);
 
   const browse = data?.deck.kind === "browse" && card && !card.inReviewQueue;
+  const extras = cardExtras(card?.meta);
 
   return (
     <main>
@@ -175,23 +191,39 @@ export default function Study({ deckId, category, season }: Props) {
       {card && (
         <>
           <div
-            className="card"
+            className={revealed ? "card revealed" : "card"}
             role="button"
             tabIndex={0}
             aria-label={revealed ? "Card" : "Reveal answer"}
             onClick={() => setRevealed(true)}
           >
             <MediaList key={`f-${view}`} media={card.media} side="front" />
-            <div className="card-text">{card.front}</div>
+            <Markdown className={`card-text md${card.front.length > LONG_TEXT ? " long" : ""}`} text={card.front} />
+            {card.tags.length > 0 && <p className="muted card-tags">{card.tags.join(" · ")}</p>}
             {revealed && (
               <>
-                <hr />
+                <hr ref={answerRef} />
+                <Markdown className={`card-text md answer${card.back.length > LONG_TEXT ? " long" : ""}`} text={card.back} />
+                {extras.notes && <Markdown className="md notes" text={extras.notes} />}
+                {extras.explanation && <Markdown className="md explanation" text={extras.explanation} />}
                 <MediaList key={`b-${view}`} media={card.media} side="back" />
-                <div className="card-text">{card.back}</div>
+                {(card.category || extras.info.length > 0) && (
+                  <dl className="card-info">
+                    {extras.info.map((line, i) => (
+                      <div key={i}>
+                        <dt>{line.label}</dt>
+                        <dd>{line.value}</dd>
+                      </div>
+                    ))}
+                    {card.category && (
+                      <div>
+                        <dt>Category</dt>
+                        <dd>{card.category}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
               </>
-            )}
-            {(card.category || card.tags.length > 0) && (
-              <p className="muted">{[card.category, ...card.tags].filter(Boolean).join(" · ")}</p>
             )}
           </div>
 

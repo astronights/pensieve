@@ -1,6 +1,7 @@
 import { and, asc, eq, lte, ne, or, type SQL, sql } from "drizzle-orm";
 import type { DB } from "@/db";
 import { cards, cardState, decks, type DeckKind, type MediaItem } from "@/db/schema";
+import { clientMeta } from "./card-extras";
 import { notFound } from "./errors";
 import { getSettings } from "./settings";
 
@@ -154,6 +155,7 @@ type CardRow = {
 
 const toDTO = (r: CardRow): CardDTO => ({
   ...r,
+  meta: clientMeta(r.meta),
   media: r.media ?? [],
   inReviewQueue: r.inReviewQueue ?? false,
   bookmarked: r.bookmarked ?? false,

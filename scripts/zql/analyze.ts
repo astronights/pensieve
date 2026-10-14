@@ -146,12 +146,6 @@ export function pickSample(records: RawQuestion[], perBucket = 3, cap = 80): Raw
   const str = (v: unknown) => (typeof v === "string" ? v : "");
   const both = (r: RawQuestion) => `${str(r.questionText)}\n${str(r.answerText)}`;
 
-  for (const season of new Set(records.map((r) => String(r.season ?? "")))) {
-    take(`season ${season}`, (r) => String(r.season ?? "") === season, 2);
-  }
-  for (const quad of new Set(records.map((r) => String(r.quad ?? "")))) {
-    take(`quad ${quad}`, (r) => String(r.quad ?? "") === quad, 1);
-  }
   take("has imageurl", (r) => !isEmpty(r.imageurl));
   take("imageurl and media in answer", (r) => !isEmpty(r.imageurl) && hasMedia(r.answerText));
   take("media in question text", (r) => hasMedia(r.questionText));
@@ -173,9 +167,17 @@ export function pickSample(records: RawQuestion[], perBucket = 3, cap = 80): Raw
     for (const m of both(r).matchAll(HTML_TAG_RE)) tags.add(m[1].toLowerCase());
   });
   for (const tag of tags) take(`<${tag}> tag`, (r) => new RegExp(`<\\s*${tag}\\b`, "i").test(both(r)), 1);
+  // Broad coverage last, so it can't crowd out the specific cases above when the cap is hit.
+  for (const season of new Set(records.map((r) => String(r.season ?? "")))) {
+    take(`season ${season}`, (r) => String(r.season ?? "") === season, 2);
+  }
+  for (const quad of [...new Set(records.map((r) => String(r.quad ?? "")))].slice(0, 10)) {
+    take(`quad ${quad}`, (r) => String(r.quad ?? "") === quad, 1);
+  }
 
+  // `chosen` keeps insertion order, i.e. priority order; cap first, then restore record order.
   return [...chosen.entries()]
-    .sort((a, b) => a[0] - b[0])
     .slice(0, cap)
+    .sort((a, b) => a[0] - b[0])
     .map(([i, reasons]) => ({ _sample_reasons: reasons, ...records[i] }));
 }
