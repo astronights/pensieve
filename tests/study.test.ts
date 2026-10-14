@@ -287,9 +287,11 @@ describe("seed data", () => {
     expect(types).toEqual(new Set(["image", "video", "audio"]));
 
     const decks = await listDecks(db, T0);
-    expect(decks.map((d) => [d.id, d.kind, d.unseen])).toEqual([
-      ["demo-spanish", "srs", 12],
-      ["demo-trivia", "browse", 8],
+    expect(decks.map((d) => [d.id, d.kind, d.parent, d.unseen])).toEqual([
+      ["demo-spanish-basics", "srs", "demo-spanish", 7],
+      ["demo-spanish", "srs", null, 12],
+      ["demo-trivia", "browse", null, 8],
+      ["demo-spanish-media", "srs", "demo-spanish", 5],
     ]);
 
     // Media cards are never skipped: the SRS loop visits all 12 cards.
@@ -301,5 +303,64 @@ describe("seed data", () => {
       await applyReview(db, { card_id: next.card.id, rating: 4 }, T0);
     }
     expect(visited).toHaveLength(12);
+  });
+});
+
+describe("sub-decks", () => {
+  const nested = (perSub: number) =>
+    parseImportPayload({
+      decks: [
+        { id: "lang", name: "Lang", kind: "srs" },
+        { id: "lang:a", name: "A", parent: "lang" },
+        { id: "lang:b", name: "B", parent: "lang" },
+      ],
+      cards: ["a", "b"].flatMap((sub) =>
+        Array.from({ length: perSub }, (_, i) => ({
+          id: `lang:${sub}:${String(i).padStart(2, "0")}`,
+          deck: `lang:${sub}`,
+          front: `${sub}${i}`,
+          back: `${sub}${i}`,
+        })),
+      ),
+    });
+
+  it("a parent's counts include its sub-decks", async () => {
+    await importCards(db, nested(3));
+    await applyReview(db, { card_id: "lang:a:00", rating: 1 }, at(-HOUR));
+    await applyReview(db, { card_id: "lang:b:00", rating: 1 }, at(-HOUR));
+    const byId = Object.fromEntries((await listDecks(db, T0)).map((d) => [d.id, d]));
+    expect(byId["lang"]).toMatchObject({ parent: null, due: 2, unseen: 4 });
+    expect(byId["lang:a"]).toMatchObject({ parent: "lang", due: 1, unseen: 2 });
+    expect(byId["lang:b"]).toMatchObject({ parent: "lang", due: 1, unseen: 2 });
+  });
+
+  it("studying a parent draws from all sub-decks; a sub-deck only from itself", async () => {
+    await importCards(db, nested(2));
+    const seenFromParent = new Set<string>();
+    for (;;) {
+      const next = await nextCard(db, "lang", {}, T0);
+      if (!next.card || next.source !== "new") break;
+      seenFromParent.add(next.card.deck);
+      await applyReview(db, { card_id: next.card.id, rating: 4 }, T0);
+    }
+    expect(seenFromParent).toEqual(new Set(["lang:a", "lang:b"]));
+
+    await importCards(db, nested(4));
+    const fromB = await nextCard(db, "lang:b", {}, T0);
+    expect(fromB.card!.deck).toBe("lang:b");
+  });
+
+  it("the daily new-card limit is shared across a parent's sub-decks", async () => {
+    await importCards(db, nested(5));
+    await updateSettings(db, { daily_new_limit: 3 });
+    await applyReview(db, { card_id: "lang:a:00", rating: 4 }, T0);
+    await applyReview(db, { card_id: "lang:a:01", rating: 4 }, T0);
+    const byId = Object.fromEntries((await listDecks(db, T0)).map((d) => [d.id, d]));
+    // 2 of the 3 shared new cards are used, so 1 is left everywhere in the group.
+    expect([byId["lang"].new, byId["lang:a"].new, byId["lang:b"].new]).toEqual([1, 1, 1]);
+
+    await applyReview(db, { card_id: "lang:b:00", rating: 4 }, T0);
+    expect((await nextCard(db, "lang:b", {}, T0)).card).toBeNull();
+    expect((await nextCard(db, "lang", {}, T0)).card).toBeNull();
   });
 });

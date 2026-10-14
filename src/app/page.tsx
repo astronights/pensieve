@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import DeckList from "@/components/DeckList";
 import { getDb } from "@/db";
 import { listDecks } from "@/lib/queue";
 
@@ -30,25 +31,7 @@ export default async function Home() {
       {decks.length === 0 ? (
         <p className="muted">No decks yet. Run the seed script or POST to /api/import.</p>
       ) : (
-        <ul className="deck-list">
-          {decks.map((d) => (
-            <li key={d.id}>
-              <Link href={`/study/${encodeURIComponent(d.id)}`}>
-                <span>
-                  {d.name}
-                  <br />
-                  <span className="muted">{d.kind === "srs" ? "spaced repetition" : "browse"}</span>
-                </span>
-                <span className="counts">
-                  <span className="count-due" title="due">{d.due}</span>
-                  <span className="count-new" title={d.kind === "srs" ? "new today" : "unseen"}>
-                    {d.new}
-                  </span>
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <DeckList decks={decks} />
       )}
     </main>
   );

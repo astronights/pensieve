@@ -14,7 +14,14 @@ export type ImportCard = {
   meta: Record<string, unknown> | null;
 };
 
-export type ImportDeck = { id: string; name: string; kind: DeckKind };
+export type ImportDeck = {
+  id: string;
+  name: string;
+  /** Omitted: a sub-deck takes its parent's kind; a top-level deck keeps its current kind (new: srs). */
+  kind?: DeckKind;
+  /** Top-level deck this deck belongs to. Omitted or null: a top-level deck. */
+  parent: string | null;
+};
 
 export type ImportPayload = { decks: ImportDeck[]; cards: ImportCard[] };
 
@@ -87,11 +94,68 @@ function parseDeck(v: unknown, i: number): ImportDeck {
   if (v.kind !== undefined && v.kind !== "srs" && v.kind !== "browse") {
     throw badRequest(`${at}.kind must be srs or browse`);
   }
+  if (v.parent !== undefined && v.parent !== null && !nonEmptyString(v.parent)) {
+    throw badRequest(`${at}.parent must be a deck id`);
+  }
+  if (v.parent === v.id) throw badRequest(`${at}: a deck can't be its own parent`);
   return {
     id: v.id,
     name: nonEmptyString(v.name) ? v.name : v.id,
-    kind: (v.kind as DeckKind | undefined) ?? "srs",
+    ...(v.kind !== undefined && { kind: v.kind as DeckKind }),
+    parent: (v.parent as string | null | undefined) ?? null,
   };
+}
+
+type DeckRow = { id: string; name: string; kind: DeckKind; parent: string | null };
+
+/**
+ * Merges incoming decks into the existing ones and checks the sub-deck rules:
+ * one level only (a parent must be top-level, and a deck with sub-decks can't become one),
+ * and a sub-deck always has its parent's kind. Returns every deck row to write.
+ */
+export function resolveDecks(existing: DeckRow[], incoming: ImportDeck[], implicitIds: string[]): DeckRow[] {
+  const final = new Map(existing.map((d) => [d.id, { ...d }]));
+  for (const d of incoming) {
+    const prev = final.get(d.id);
+    final.set(d.id, { id: d.id, name: d.name, kind: d.kind ?? prev?.kind ?? "srs", parent: d.parent });
+  }
+  for (const id of implicitIds) {
+    if (!final.has(id)) final.set(id, { id, name: id, kind: "srs", parent: null });
+  }
+
+  const hasChildren = new Set([...final.values()].map((d) => d.parent).filter(Boolean));
+  for (const d of incoming) {
+    if (!d.parent) continue;
+    const parent = final.get(d.parent);
+    if (!parent) throw badRequest(`Deck ${d.id}: parent deck ${d.parent} doesn't exist`);
+    if (parent.parent) {
+      throw badRequest(`Deck ${d.id}: ${d.parent} is itself a sub-deck (only one level of sub-decks is allowed)`);
+    }
+    if (hasChildren.has(d.id)) {
+      throw badRequest(
+        `Deck ${d.id} has sub-decks, so it can't become a sub-deck itself (only one level of sub-decks is allowed)`,
+      );
+    }
+    if (d.kind && d.kind !== parent.kind) {
+      throw badRequest(`Deck ${d.id}: a sub-deck must have its parent's kind (${parent.kind})`);
+    }
+  }
+  // Sub-decks follow their parent's kind, including existing ones when a parent's kind changes.
+  for (const d of final.values()) {
+    if (d.parent) d.kind = final.get(d.parent)!.kind;
+  }
+
+  const touched = new Set([
+    ...incoming.map((d) => d.id),
+    ...implicitIds,
+    ...[...final.values()].filter((d) => d.parent && final.get(d.parent)).map((d) => d.id),
+  ]);
+  const before = new Map(existing.map((d) => [d.id, d]));
+  return [...final.values()].filter((d) => {
+    if (!touched.has(d.id)) return false;
+    const b = before.get(d.id);
+    return !b || b.name !== d.name || b.kind !== d.kind || b.parent !== d.parent;
+  });
 }
 
 /** Accepts either a bare array of cards or `{ decks?: [...], cards: [...] }`. */
@@ -104,12 +168,18 @@ export function parseImportPayload(body: unknown): ImportPayload {
     throw badRequest(`Too many cards in one request (max ${MAX_IMPORT_CARDS})`);
   }
   const parsedCards = rawCards.map(parseCard);
+  const parsedDecks = rawDecks.map(parseDeck);
+  const deckIds = new Set<string>();
+  for (const d of parsedDecks) {
+    if (deckIds.has(d.id)) throw badRequest(`Duplicate deck id in payload: ${d.id}`);
+    deckIds.add(d.id);
+  }
   const seen = new Set<string>();
   for (const c of parsedCards) {
     if (seen.has(c.id)) throw badRequest(`Duplicate card id in payload: ${c.id}`);
     seen.add(c.id);
   }
-  return { decks: rawDecks.map(parseDeck), cards: parsedCards };
+  return { decks: parsedDecks, cards: parsedCards };
 }
 
 export type ImportResult = { decks: number; cards: number };
@@ -117,26 +187,27 @@ export type ImportResult = { decks: number; cards: number };
 /**
  * Upserts decks and cards by id. Card content is replaced, but card_state and
  * review_log are never touched, so re-importing keeps all study progress.
- * Decks referenced by cards but not listed are created as `srs` decks if missing.
+ * Decks referenced by cards but not listed are created as top-level `srs` decks if missing.
  */
 export async function importCards(db: DB, payload: ImportPayload): Promise<ImportResult> {
   const listed = new Set(payload.decks.map((d) => d.id));
-  const implicit = [...new Set(payload.cards.map((c) => c.deck))]
-    .filter((id) => !listed.has(id))
-    .map((id) => ({ id, name: id, kind: "srs" as const }));
+  const implicitIds = [...new Set(payload.cards.map((c) => c.deck))].filter((id) => !listed.has(id));
 
   await db.transaction(async (tx) => {
-    if (payload.decks.length > 0) {
+    const existing = await tx
+      .select({ id: decks.id, name: decks.name, kind: decks.kind, parent: decks.parent })
+      .from(decks);
+    const rows = resolveDecks(existing, payload.decks, implicitIds);
+    // Parents first, so a sub-deck's foreign key always finds its parent.
+    for (const level of [rows.filter((d) => !d.parent), rows.filter((d) => d.parent)]) {
+      if (level.length === 0) continue;
       await tx
         .insert(decks)
-        .values(payload.decks)
+        .values(level)
         .onConflictDoUpdate({
           target: decks.id,
-          set: { name: sql`excluded.name`, kind: sql`excluded.kind` },
+          set: { name: sql`excluded.name`, kind: sql`excluded.kind`, parent: sql`excluded.parent` },
         });
-    }
-    if (implicit.length > 0) {
-      await tx.insert(decks).values(implicit).onConflictDoNothing();
     }
     for (let i = 0; i < payload.cards.length; i += CHUNK) {
       await tx
@@ -157,5 +228,5 @@ export async function importCards(db: DB, payload: ImportPayload): Promise<Impor
         });
     }
   });
-  return { decks: payload.decks.length + implicit.length, cards: payload.cards.length };
+  return { decks: payload.decks.length + implicitIds.length, cards: payload.cards.length };
 }

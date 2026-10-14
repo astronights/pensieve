@@ -101,3 +101,26 @@ test("appearance can be forced to light or dark and is remembered", async ({ pag
   await expect(html).not.toHaveAttribute("data-theme", /.*/);
   expect(await bg()).toBe("rgb(250, 250, 249)");
 });
+
+test("sub-decks: expand a parent and study one sub-deck", async ({ page, context }) => {
+  await context.request.post("/api/login", { data: { passcode: PASSCODE } });
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: /Basics/ })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Show sub-decks of Spanish (demo)" }).click();
+  await expect(page.getByRole("link", { name: /With media/ })).toBeVisible();
+
+  // Stays open after a reload (remembered on this device).
+  await page.reload();
+  await page.getByRole("link", { name: /Basics/ }).click();
+  await expect(page).toHaveURL(/\/study\/demo-spanish-basics/);
+
+  // Earlier tests may have studied these cards already, so either a card or "nothing left" is fine.
+  await expect(
+    page.getByRole("button", { name: "Show answer" }).or(page.getByText(/Nothing left in Basics/)),
+  ).toBeVisible();
+
+  const { decks } = await (await context.request.get("/api/decks")).json();
+  const basics = decks.find((d: { id: string }) => d.id === "demo-spanish-basics");
+  expect(basics).toMatchObject({ parent: "demo-spanish", kind: "srs" });
+});

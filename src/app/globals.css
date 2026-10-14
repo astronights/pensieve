@@ -87,10 +87,14 @@ button:disabled { opacity: 0.5; cursor: default; }
 .muted { color: var(--muted); font-size: 0.9rem; }
 
 .deck-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
-.deck-list a {
+.deck-row { display: flex; gap: 0.5rem; align-items: stretch; }
+.deck-link {
+  flex: 1;
+  min-width: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
   padding: 1rem;
   min-height: 64px;
   border: 1px solid var(--border);
@@ -99,6 +103,25 @@ button:disabled { opacity: 0.5; cursor: default; }
   color: inherit;
   text-decoration: none;
 }
+.expand {
+  width: 48px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+.expand-spacer { width: 48px; flex: none; }
+.expand svg { transition: transform 0.15s ease; }
+.expand[aria-expanded="true"] svg { transform: rotate(90deg); }
+.sub-decks {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0 0 0 calc(48px + 0.5rem);
+  display: grid;
+  gap: 0.5rem;
+}
+.sub-decks .deck-link { min-height: 56px; padding: 0.75rem 1rem; }
 .counts { display: flex; gap: 0.75rem; font-variant-numeric: tabular-nums; }
 .count-due { color: var(--good); }
 .count-new { color: var(--easy); }
