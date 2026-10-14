@@ -8,7 +8,6 @@ import {
   jsonb,
   pgEnum,
   pgTable,
-  serial,
   smallint,
   text,
   timestamp,
@@ -80,7 +79,7 @@ export const cardState = pgTable(
 export const reviewLog = pgTable(
   "review_log",
   {
-    id: serial("id").primaryKey(),
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
     cardId: text("card_id")
       .notNull()
       .references(() => cards.id, { onDelete: "cascade" }),
