@@ -11,7 +11,9 @@ export type DeckSummary = {
   id: string;
   name: string;
   kind: DeckKind;
-  /** Cards in FSRS whose due time has passed. */
+  /** Parent deck id for a sub-deck; null for a top-level deck. */
+  parent: string | null;
+  /** Cards in FSRS whose due time has passed (a parent includes its sub-decks). */
   due: number;
   /** SRS: new cards still available today (capped). Browse: unseen cards. */
   new: number;
@@ -72,6 +74,20 @@ const unseen = sql.raw(
   `("card_state"."card_id" is null or ("card_state"."reps" = 0 and "card_state"."last_review" is null and not "card_state"."in_review_queue"))`,
 );
 
+/** Cards of the outer `decks` row, including its sub-decks' cards (a sub-deck has none of its own). */
+const inDeckScope = sql.raw(
+  `"cards"."deck" in (select "s"."id" from "decks" "s" where "s"."id" = "decks"."id" or "s"."parent" = "decks"."id")`,
+);
+
+/** Cards of the outer deck's whole top-level group: the daily new-card limit is shared across it. */
+const inDeckGroup = sql.raw(
+  `"cards"."deck" in (select "g"."id" from "decks" "g" where coalesce("g"."parent", "g"."id") = coalesce("decks"."parent", "decks"."id"))`,
+);
+
+/** Cards in deck `deckId` or one of its sub-decks. */
+const deckScope = (deckId: string) =>
+  sql`${cards.deck} in (select "s"."id" from "decks" "s" where "s"."id" = ${deckId} or "s"."parent" = ${deckId})`;
+
 export async function listDecks(db: DB, now = new Date(), deckId?: string): Promise<DeckSummary[]> {
   const { daily_new_limit, timezone } = await getSettings(db);
   const rows = await db
@@ -79,20 +95,21 @@ export async function listDecks(db: DB, now = new Date(), deckId?: string): Prom
       id: decks.id,
       name: decks.name,
       kind: decks.kind,
+      parent: decks.parent,
       due: sql<number>`(
         select count(*) from "cards"
         join "card_state" on "card_state"."card_id" = "cards"."id"
-        where "cards"."deck" = "decks"."id" and "card_state"."due" <= ${ts(now)} and ${inFsrs}
+        where ${inDeckScope} and "card_state"."due" <= ${ts(now)} and ${inFsrs}
       )`.mapWith(Number),
       unseen: sql<number>`(
         select count(*) from "cards"
         left join "card_state" on "card_state"."card_id" = "cards"."id"
-        where "cards"."deck" = "decks"."id" and ${unseen}
+        where ${inDeckScope} and ${unseen}
       )`.mapWith(Number),
       newToday: sql<number>`(
         select count(*) from "review_log"
         join "cards" on "cards"."id" = "review_log"."card_id"
-        where "cards"."deck" = "decks"."id"
+        where ${inDeckGroup}
           and "review_log"."state_before" = 'new'
           and "review_log"."reviewed_at" >= ${dayStart(now, timezone)}
       )`.mapWith(Number),
@@ -168,7 +185,7 @@ export async function nextCard(
       .innerJoin(decks, eq(decks.id, cards.deck))
       .where(
         and(
-          eq(cards.deck, deckId),
+          deckScope(deckId),
           lte(cardState.due, until),
           inFsrs,
           learningOnly
@@ -192,7 +209,7 @@ export async function nextCard(
       .select({ id: cards.id })
       .from(cards)
       .leftJoin(cardState, eq(cardState.cardId, cards.id))
-      .where(and(eq(cards.id, filters.exclude), eq(cards.deck, deckId), unseen))
+      .where(and(eq(cards.id, filters.exclude), deckScope(deckId), unseen))
       .limit(1);
     if (excludedIsNew) newAvailable = 0;
   }
@@ -202,7 +219,7 @@ export async function nextCard(
       .select(cardColumns)
       .from(cards)
       .leftJoin(cardState, eq(cardState.cardId, cards.id))
-      .where(and(eq(cards.deck, deckId), unseen, ...extra))
+      .where(and(deckScope(deckId), unseen, ...extra))
       .orderBy(...(deck.kind === "srs" ? [asc(cards.createdAt), asc(cards.id)] : [sql`random()`]))
       .limit(1);
     if (fresh) {

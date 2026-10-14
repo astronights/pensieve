@@ -44,6 +44,11 @@ Every route requires the session cookie or `Authorization: Bearer $APP_PASSCODE`
 | `GET` / `PATCH /api/settings` (UI at `/settings`) | `daily_new_limit` (15), `desired_retention` (0.90), `timezone` (UTC) |
 
 Card shape: `{id, deck, front, back, tags?, category?, media?: [{type: image|video|audio, url, side: front|back}], meta?: {season?, ...}}`.
+
+Deck shape: `{id, name?, kind?: srs|browse, parent?}`. Sub-decks are one level deep: `parent` must be a
+top-level deck, and a sub-deck always has its parent's `kind` (omit it to inherit). Studying a parent
+draws from its own cards and all its sub-decks, its counts include theirs, and the daily new-card limit
+is shared across the whole group.
 Media are external URLs only. Card text is rendered as plain text (no HTML).
 
 ## Development

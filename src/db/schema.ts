@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   check,
   doublePrecision,
@@ -26,11 +27,18 @@ export const cardStage = pgEnum("card_stage", ["new", "learning", "review", "rel
 export type DeckKind = (typeof deckKind.enumValues)[number];
 export type CardStage = (typeof cardStage.enumValues)[number];
 
-export const decks = pgTable("decks", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  kind: deckKind("kind").notNull().default("srs"),
-});
+export const decks = pgTable(
+  "decks",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    kind: deckKind("kind").notNull().default("srs"),
+    // One level of sub-decks: a sub-deck's parent is always a top-level deck, and a sub-deck
+    // always has its parent's kind. Both rules are enforced on import (lib/import.ts).
+    parent: text("parent").references((): AnyPgColumn => decks.id),
+  },
+  (t) => [index("decks_parent_idx").on(t.parent)],
+);
 
 export const cards = pgTable(
   "cards",

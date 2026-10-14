@@ -9,8 +9,10 @@ const BROKEN = "https://example.invalid/missing.jpg";
 
 export const SEED: ImportPayload = {
   decks: [
-    { id: "demo-spanish", name: "Spanish (demo)", kind: "srs" },
-    { id: "demo-trivia", name: "Trivia (demo)", kind: "browse" },
+    { id: "demo-spanish", name: "Spanish (demo)", kind: "srs", parent: null },
+    { id: "demo-spanish-basics", name: "Basics", parent: "demo-spanish" },
+    { id: "demo-spanish-media", name: "With media", parent: "demo-spanish" },
+    { id: "demo-trivia", name: "Trivia (demo)", kind: "browse", parent: null },
   ],
   cards: [
     ...(
@@ -30,7 +32,7 @@ export const SEED: ImportPayload = {
       ] as const
     ).map(([front, back, media], i) => ({
       id: `demo:es:${String(i + 1).padStart(2, "0")}`,
-      deck: "demo-spanish",
+      deck: media ? "demo-spanish-media" : "demo-spanish-basics",
       front,
       back,
       tags: ["demo", "spanish"],
