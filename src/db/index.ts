@@ -16,7 +16,14 @@ export function getDb(): DB {
   if (!db) {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error("DATABASE_URL is not set");
-    const pool = new Pool({ connectionString: url, max: 5, idleTimeoutMillis: 5_000 });
+    // Keep connections warm between taps: opening a new TLS connection to Neon costs several
+    // round trips, which made every answer feel slow with a short idle timeout.
+    const pool = new Pool({
+      connectionString: url,
+      max: 5,
+      idleTimeoutMillis: 60_000,
+      keepAlive: true,
+    });
     // Idle clients can be dropped by the server (e.g. Neon scaling to zero); don't crash on it.
     pool.on("error", (err) => console.error("Postgres pool error", err));
     db = drizzle({ client: pool, schema });

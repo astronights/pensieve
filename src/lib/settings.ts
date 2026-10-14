@@ -54,7 +54,19 @@ export function isSettingKey(key: string): key is keyof Settings {
   return (KEYS as string[]).includes(key);
 }
 
+/** Settings are read on every request but change rarely; cache briefly per DB instance. */
+const CACHE_TTL_MS = 30_000;
+const cache = new WeakMap<DB, { value: Settings; at: number }>();
+
 export async function getSettings(db: DB): Promise<Settings> {
+  const hit = cache.get(db);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
+  const value = await readSettings(db);
+  cache.set(db, { value, at: Date.now() });
+  return value;
+}
+
+async function readSettings(db: DB): Promise<Settings> {
   const rows = await db.select().from(settings).where(inArray(settings.key, KEYS));
   const result = { ...DEFAULT_SETTINGS };
   for (const row of rows) {
@@ -79,5 +91,6 @@ export async function updateSettings(db: DB, patch: Record<string, unknown>): Pr
       .values(entries)
       .onConflictDoUpdate({ target: settings.key, set: { value: sql`excluded.value` } });
   }
+  cache.delete(db);
   return getSettings(db);
 }

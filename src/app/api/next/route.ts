@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
     return nextCard(getDb(), deck, {
       category: params.get("category"),
       season: params.get("season"),
+      exclude: params.get("exclude"),
     });
   });
 }
