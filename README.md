@@ -51,6 +51,19 @@ draws from its own cards and all its sub-decks, its counts include theirs, and t
 is shared across the whole group.
 Media are external URLs only. Card text is rendered as plain text (no HTML).
 
+## Content scripts
+
+Raw source material lives in `content/` (gitignored, never committed).
+
+```bash
+npx playwright install chromium   # once
+npm run zql:scrape                # ZQL question bank → content/zql/{questions,report,sample}.json
+npm run zql:scrape -- --headed    # watch the browser; --timeout <s> to wait longer
+```
+
+`report.json` describes every field (types, fill rate, values, markup and media hosts in the text) and
+`sample.json` holds a representative set of full records, for planning the import mapping.
+
 ## Development
 
 ```bash
