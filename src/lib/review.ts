@@ -33,6 +33,7 @@ export function parseReviewInput(body: unknown): ReviewInput {
 
 export type ReviewResult = {
   card_id: string;
+  deck: string;
   /** Whether FSRS scheduled the card (false for a plain "seen" mark in a browse deck). */
   scheduled: boolean;
   state: (typeof cardState.$inferSelect)["state"];
@@ -41,8 +42,13 @@ export type ReviewResult = {
   bookmarked: boolean;
 };
 
-const toResult = (s: typeof cardState.$inferSelect, scheduled: boolean): ReviewResult => ({
+const toResult = (
+  s: typeof cardState.$inferSelect,
+  deck: string,
+  scheduled: boolean,
+): ReviewResult => ({
   card_id: s.cardId,
+  deck,
   scheduled,
   state: s.state,
   due: s.due,
@@ -52,7 +58,7 @@ const toResult = (s: typeof cardState.$inferSelect, scheduled: boolean): ReviewR
 
 export async function applyReview(db: DB, input: ReviewInput, now = new Date()): Promise<ReviewResult> {
   const [found] = await db
-    .select({ kind: decks.kind, state: cardState })
+    .select({ deck: decks.id, kind: decks.kind, state: cardState })
     .from(cards)
     .innerJoin(decks, eq(decks.id, cards.deck))
     .leftJoin(cardState, eq(cardState.cardId, cards.id))
@@ -67,7 +73,7 @@ export async function applyReview(db: DB, input: ReviewInput, now = new Date()):
       .values({ cardId: input.card_id, due: now, bookmarked: input.value })
       .onConflictDoUpdate({ target: cardState.cardId, set: { bookmarked: input.value } })
       .returning();
-    return toResult(row, false);
+    return toResult(row, found.deck, false);
   }
 
   if ("action" in input) {
@@ -85,7 +91,7 @@ export async function applyReview(db: DB, input: ReviewInput, now = new Date()):
         },
       })
       .returning();
-    return toResult(row, false);
+    return toResult(row, found.deck, false);
   }
 
   const inFsrs = found.kind === "srs" || existing?.inReviewQueue === true || input.rating === 1;
@@ -96,7 +102,7 @@ export async function applyReview(db: DB, input: ReviewInput, now = new Date()):
       .values({ cardId: input.card_id, due: now, lastReview: now })
       .onConflictDoUpdate({ target: cardState.cardId, set: { lastReview: now } })
       .returning();
-    return toResult(row, false);
+    return toResult(row, found.deck, false);
   }
 
   const { desired_retention } = await getSettings(db);
@@ -124,5 +130,5 @@ export async function applyReview(db: DB, input: ReviewInput, now = new Date()):
     });
     return saved;
   });
-  return toResult(row, true);
+  return toResult(row, found.deck, true);
 }

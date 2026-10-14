@@ -10,6 +10,7 @@
   --hard: #d97706;
   --good: #16a34a;
   --easy: #2563eb;
+  --on-accent: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -24,6 +25,7 @@
     --hard: #fbbf24;
     --good: #4ade80;
     --easy: #60a5fa;
+    --on-accent: #0c0a09;
   }
 }
 
@@ -123,3 +125,85 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 form.stack { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 20dvh; }
 .error { color: var(--again); }
+
+/* Navigation */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-height: 44px;
+  padding: 0 0.9rem 0 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--fg);
+  font-weight: 600;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.back:active, .icon-button:active { transform: scale(0.97); }
+.back svg { color: var(--muted); }
+
+.header-actions { display: flex; align-items: center; gap: 0.5rem; }
+.header-actions form { margin: 0; }
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--fg);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  height: 2rem;
+  padding: 0 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* Settings */
+.settings { display: flex; flex-direction: column; gap: 1.25rem; }
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+}
+.field-label { font-weight: 600; display: flex; justify-content: space-between; }
+.field-label output { font-variant-numeric: tabular-nums; color: var(--accent); }
+.field-help { color: var(--muted); font-size: 0.85rem; }
+.field input[type="range"] { min-height: 44px; padding: 0; border: none; background: none; accent-color: var(--accent); }
+select {
+  font: inherit;
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  padding: 0.5rem 0.75rem;
+}
+.link-button {
+  align-self: flex-start;
+  min-height: 36px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.success { color: var(--good); margin: 0; }

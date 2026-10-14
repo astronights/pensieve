@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { DB } from "@/db";
-import { cardState, reviewLog } from "@/db/schema";
+import { cardState, reviewLog, settings as settingsTable } from "@/db/schema";
 import { HttpError } from "@/lib/errors";
 import { importCards, parseImportPayload } from "@/lib/import";
 import { listDecks, nextCard } from "@/lib/queue";
@@ -54,6 +54,15 @@ describe("settings", () => {
     await expect(updateSettings(db, { timezone: "Mars/Olympus" })).rejects.toThrow(HttpError);
     await expect(updateSettings(db, { nope: 1 })).rejects.toThrow(HttpError);
   });
+
+  it("caches reads and refreshes after an update", async () => {
+    await getSettings(db);
+    // A write that bypasses updateSettings is not seen while cached...
+    await db.insert(settingsTable).values({ key: "daily_new_limit", value: 3 });
+    expect((await getSettings(db)).daily_new_limit).toBe(15);
+    // ...but updateSettings invalidates the cache.
+    expect((await updateSettings(db, { timezone: "Europe/London" })).daily_new_limit).toBe(3);
+  });
 });
 
 describe("parseReviewInput", () => {
@@ -102,7 +111,7 @@ describe("SRS decks", () => {
   it("runs FSRS, updates card_state and appends review_log", async () => {
     await importCards(db, srsDeck(1));
     const r1 = await applyReview(db, { card_id: "lang:000", rating: 3 }, T0);
-    expect(r1).toMatchObject({ scheduled: true, state: "learning" });
+    expect(r1).toMatchObject({ scheduled: true, state: "learning", deck: "lang" });
 
     const [s1] = await db.select().from(cardState);
     expect(s1).toMatchObject({ reps: 1, lapses: 0, inReviewQueue: false });
@@ -136,6 +145,26 @@ describe("SRS decks", () => {
     expect(await deck("lang", later)).toMatchObject({ due: 2, new: 1 });
     const next = await nextCard(db, "lang", {}, later);
     expect(next).toMatchObject({ source: "due", card: { id: "lang:002", state: "learning" } });
+  });
+
+  it("exclude skips the current card (used for prefetching)", async () => {
+    await importCards(db, srsDeck(3));
+    expect((await nextCard(db, "lang", { exclude: "lang:000" }, T0)).card!.id).toBe("lang:001");
+    await applyReview(db, { card_id: "lang:001", rating: 1 }, at(-HOUR));
+    // A due card is skipped too when excluded.
+    expect((await nextCard(db, "lang", {}, T0)).card!.id).toBe("lang:001");
+    expect((await nextCard(db, "lang", { exclude: "lang:001" }, T0)).card!.id).toBe("lang:000");
+  });
+
+  it("prefetch never goes past the daily new-card cap", async () => {
+    await importCards(db, srsDeck(3));
+    await updateSettings(db, { daily_new_limit: 1 });
+    // lang:000 is the one new card allowed today and is on screen, not yet answered.
+    expect(await nextCard(db, "lang", { exclude: "lang:000" }, T0)).toMatchObject({ card: null });
+    // Excluding a card that isn't new leaves the cap alone.
+    await applyReview(db, { card_id: "lang:002", rating: 1 }, at(-DAY));
+    await updateSettings(db, { daily_new_limit: 2 });
+    expect((await nextCard(db, "lang", { exclude: "lang:002" }, T0)).card!.id).toBe("lang:000");
   });
 
   it("learns ahead when nothing else is left", async () => {

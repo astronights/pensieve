@@ -1,4 +1,4 @@
-import { and, asc, eq, lte, or, type SQL, sql } from "drizzle-orm";
+import { and, asc, eq, lte, ne, or, type SQL, sql } from "drizzle-orm";
 import type { DB } from "@/db";
 import { cards, cardState, decks, type DeckKind, type MediaItem } from "@/db/schema";
 import { notFound } from "./errors";
@@ -40,7 +40,15 @@ export type NextResult = {
   counts: { due: number; new: number; unseen: number };
 };
 
-export type NextFilters = { category?: string | null; season?: string | null };
+export type NextFilters = {
+  category?: string | null;
+  season?: string | null;
+  /**
+   * Skip this card. The client prefetches "the card after the current one" before the current
+   * card's answer is saved, so the current card must not be picked again.
+   */
+  exclude?: string | null;
+};
 
 const ts = (d: Date) => sql`${d.toISOString()}::timestamptz`;
 
@@ -103,6 +111,7 @@ function filterConditions(f: NextFilters): SQL[] {
   const out: SQL[] = [];
   if (f.category) out.push(eq(cards.category, f.category));
   if (f.season) out.push(sql`${cards.meta}->>'season' = ${f.season}`);
+  if (f.exclude) out.push(ne(cards.id, f.exclude));
   return out;
 }
 
@@ -176,7 +185,19 @@ export async function nextCard(
   const due = await fsrsCard(now, false);
   if (due) return { deck, card: toDTO(due), source: "due", counts };
 
-  if (deck.kind === "srs" ? counts.new > 0 : counts.unseen > 0) {
+  let newAvailable = deck.kind === "srs" ? counts.new : counts.unseen;
+  if (filters.exclude && deck.kind === "srs" && newAvailable === 1) {
+    // The excluded card may be the last new card allowed today (its answer isn't saved yet).
+    const [excludedIsNew] = await db
+      .select({ id: cards.id })
+      .from(cards)
+      .leftJoin(cardState, eq(cardState.cardId, cards.id))
+      .where(and(eq(cards.id, filters.exclude), eq(cards.deck, deckId), unseen))
+      .limit(1);
+    if (excludedIsNew) newAvailable = 0;
+  }
+
+  if (newAvailable > 0) {
     const [fresh] = await db
       .select(cardColumns)
       .from(cards)

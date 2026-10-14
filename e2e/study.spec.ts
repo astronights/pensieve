@@ -51,9 +51,31 @@ test("browse deck: Again sends the card to review, Next just moves on", async ({
   await page.getByRole("button", { name: "Again" }).click();
 
   await page.getByRole("button", { name: "Show answer" }).click();
+  // Answers save in the background; wait for that save before checking counts.
+  const saved = page.waitForResponse((r) => r.url().endsWith("/api/review") && r.ok());
   await page.getByRole("button", { name: "Next" }).click();
+  await saved;
 
   const decks = await (await context.request.get("/api/decks")).json();
   const trivia = decks.decks.find((d: { id: string }) => d.id === "demo-trivia");
   expect(trivia.unseen).toBe(6);
+});
+
+test("settings page saves values", async ({ page, context }) => {
+  await context.request.post("/api/login", { data: { passcode: PASSCODE } });
+  await page.goto("/");
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+
+  const limit = page.getByLabel(/New cards per day/);
+  await expect(limit).toHaveValue("15");
+  await limit.fill("20");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+
+  const settings = await (await context.request.get("/api/settings")).json();
+  expect(settings.daily_new_limit).toBe(20);
+
+  await page.getByRole("link", { name: "Decks" }).click();
+  await expect(page.getByRole("heading", { name: "Pensieve" })).toBeVisible();
 });

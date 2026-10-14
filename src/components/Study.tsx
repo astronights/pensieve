@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { NextResult } from "@/lib/queue";
+import BackLink from "./BackLink";
 import { MediaList } from "./Media";
 
 type Props = { deckId: string; category?: string; season?: string };
+type Counts = NextResult["counts"];
 
 const RATINGS = [
   { value: 1, label: "Again", cls: "again" },
@@ -14,60 +16,117 @@ const RATINGS = [
   { value: 4, label: "Easy", cls: "easy" },
 ] as const;
 
+async function json<T>(res: Response): Promise<T> {
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+  return body as T;
+}
+
+/**
+ * Study loop. To keep taps instant, the next card is prefetched while the current one is on
+ * screen; answering shows it immediately and saves the answer in the background.
+ */
 export default function Study({ deckId, category, season }: Props) {
   const [data, setData] = useState<NextResult | null>(null);
+  const [view, setView] = useState(0); // bumps on every card shown (the same card can return)
   const [revealed, setRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const qs = new URLSearchParams({ deck: deckId });
-    if (category) qs.set("category", category);
-    if (season) qs.set("season", season);
-    const res = await fetch(`/api/next?${qs}`, { cache: "no-store" });
-    const body = await res.json();
-    if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
-    setData(body);
-    setRevealed(false);
-  }, [deckId, category, season]);
+  // Saves are chained so a prefetch never runs before the previous answer is stored.
+  const lastSave = useRef<Promise<unknown>>(Promise.resolve());
+  const prefetch = useRef<{ after: string; result: Promise<NextResult> } | null>(null);
 
-  const run = useCallback(
-    async (fn: () => Promise<void>) => {
-      setBusy(true);
+  const fetchNext = useCallback(
+    async (exclude?: string) => {
+      const qs = new URLSearchParams({ deck: deckId });
+      if (category) qs.set("category", category);
+      if (season) qs.set("season", season);
+      if (exclude) qs.set("exclude", exclude);
+      return json<NextResult>(await fetch(`/api/next?${qs}`, { cache: "no-store" }));
+    },
+    [deckId, category, season],
+  );
+
+  const show = useCallback((next: NextResult) => {
+    setData(next);
+    setRevealed(false);
+    setView((v) => v + 1);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchNext().then(
+      (next) => !cancelled && show(next),
+      (e) => !cancelled && setError(e instanceof Error ? e.message : String(e)),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchNext, show]);
+
+  const card = data?.card ?? null;
+  const cardId = card?.id;
+
+  // Prefetch the card after this one as soon as it's on screen.
+  useEffect(() => {
+    if (!cardId) return;
+    const result = lastSave.current.then(() => fetchNext(cardId));
+    result.catch(() => {}); // handled where it's used
+    prefetch.current = { after: cardId, result };
+  }, [cardId, view, fetchNext]);
+
+  const answer = useCallback(
+    async (body: { rating: number } | { action: "add_to_review" }) => {
+      if (!card || busy) return;
       setError(null);
+
+      const save = lastSave.current
+        .catch(() => {})
+        .then(async () =>
+          json<{ counts?: Counts }>(
+            await fetch("/api/review", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ card_id: card.id, ...body }),
+            }),
+          ),
+        );
+      lastSave.current = save;
+
+      const pending = prefetch.current?.after === card.id ? prefetch.current.result : null;
+      prefetch.current = null;
+
+      setBusy(true);
       try {
-        await fn();
+        let next = pending ? await pending.catch(() => null) : null;
+        if (next?.card) {
+          // Show the prefetched card now; finish saving in the background.
+          show(next);
+          setBusy(false);
+          save.then(
+            (res) => {
+              // Counts in the prefetch were computed before this answer was saved.
+              if (res.counts) {
+                const counts = res.counts;
+                setData((d) => (d && d.card?.id === next!.card!.id ? { ...d, counts } : d));
+              }
+            },
+            (e) => setError(`Couldn't save your last answer: ${e instanceof Error ? e.message : e}`),
+          );
+          return;
+        }
+        // Nothing else was queued: the card just answered may come straight back, so wait.
+        await save;
+        next = await fetchNext();
+        show(next);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
         setBusy(false);
       }
     },
-    [],
-  );
-
-  useEffect(() => {
-    // Initial fetch; `run` only sets state after the request resolves.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void run(load);
-  }, [run, load]);
-
-  const card = data?.card ?? null;
-  const browse = data?.deck.kind === "browse" && card && !card.inReviewQueue;
-
-  const send = useCallback(
-    (body: Record<string, unknown>) =>
-      run(async () => {
-        if (!card) return;
-        const res = await fetch("/api/review", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ card_id: card.id, ...body }),
-        });
-        if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
-        await load();
-      }),
-    [card, load, run],
+    [busy, card, fetchNext, show],
   );
 
   useEffect(() => {
@@ -77,21 +136,25 @@ export default function Study({ deckId, category, season }: Props) {
         e.preventDefault();
         setRevealed(true);
       } else if (revealed && ["1", "2", "3", "4"].includes(e.key)) {
-        void send({ rating: Number(e.key) });
+        void answer({ rating: Number(e.key) });
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [busy, card, revealed, send]);
+  }, [busy, card, revealed, answer]);
+
+  const browse = data?.deck.kind === "browse" && card && !card.inReviewQueue;
 
   return (
     <main>
       <header>
-        <Link href="/">← Decks</Link>
+        <BackLink />
         {data && (
-          <span className="counts muted">
-            <span className="count-due">{data.counts.due}</span>
-            <span className="count-new">{data.counts.new}</span>
+          <span className="counts" aria-label="due and new">
+            <span className="chip count-due" title="due">{data.counts.due}</span>
+            <span className="chip count-new" title={data.deck.kind === "srs" ? "new today" : "unseen"}>
+              {data.counts.new}
+            </span>
           </span>
         )}
       </header>
@@ -113,12 +176,12 @@ export default function Study({ deckId, category, season }: Props) {
             aria-label={revealed ? "Card" : "Reveal answer"}
             onClick={() => setRevealed(true)}
           >
-            <MediaList media={card.media} side="front" />
+            <MediaList key={`f-${view}`} media={card.media} side="front" />
             <div className="card-text">{card.front}</div>
             {revealed && (
               <>
                 <hr />
-                <MediaList media={card.media} side="back" />
+                <MediaList key={`b-${view}`} media={card.media} side="back" />
                 <div className="card-text">{card.back}</div>
               </>
             )}
@@ -133,20 +196,20 @@ export default function Study({ deckId, category, season }: Props) {
             </button>
           ) : browse ? (
             <div className="actions three">
-              <button className="again" disabled={busy} onClick={() => send({ rating: 1 })}>
+              <button className="again" disabled={busy} onClick={() => answer({ rating: 1 })}>
                 Again
               </button>
-              <button className="hard" disabled={busy} onClick={() => send({ action: "add_to_review" })}>
+              <button className="hard" disabled={busy} onClick={() => answer({ action: "add_to_review" })}>
                 Add to review
               </button>
-              <button className="good" disabled={busy} onClick={() => send({ rating: 3 })}>
+              <button className="good" disabled={busy} onClick={() => answer({ rating: 3 })}>
                 Next
               </button>
             </div>
           ) : (
             <div className="actions">
               {RATINGS.map((r) => (
-                <button key={r.value} className={r.cls} disabled={busy} onClick={() => send({ rating: r.value })}>
+                <button key={r.value} className={r.cls} disabled={busy} onClick={() => answer({ rating: r.value })}>
                   {r.label}
                 </button>
               ))}
