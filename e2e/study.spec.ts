@@ -107,7 +107,7 @@ test("sub-decks: expand a parent and study one sub-deck", async ({ page, context
   await page.goto("/");
   await expect(page.getByRole("link", { name: /Basics/ })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Show sub-decks of Spanish (demo)" }).click();
+  await page.getByRole("button", { name: "Show decks in Spanish (demo)" }).click();
   await expect(page.getByRole("link", { name: /With media/ })).toBeVisible();
 
   // Stays open after a reload (remembered on this device).
@@ -162,6 +162,10 @@ test("Markdown, notes, explanation and info show only after the reveal", async (
   }
 
   await page.getByRole("button", { name: "Show answer" }).click();
+  // A new card: each button shows when it would come back.
+  await expect(page.getByRole("button", { name: /^Again/ })).toContainText("1m");
+  await expect(page.getByRole("button", { name: /^Good/ })).toContainText("10m");
+  await expect(page.getByRole("button", { name: /^Easy/ })).toContainText("8d");
   await expect(card.locator(".answer strong", { hasText: "Paris" })).toBeVisible();
   await expect(card.locator(".notes strong", { hasText: "Lutetia" })).toBeVisible();
   await expect(card.locator(".explanation")).toHaveText("Capital of France.");

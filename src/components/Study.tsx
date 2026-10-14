@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { NextResult } from "@/lib/queue";
 import BackLink from "./BackLink";
 import { cardExtras } from "@/lib/card-extras";
+import { formatInterval } from "@/lib/format";
 import Markdown from "./Markdown";
 import { MediaList } from "./Media";
 
@@ -235,6 +236,7 @@ export default function Study({ deckId, category, season }: Props) {
             <div className="actions three">
               <button className="again" disabled={busy} onClick={() => answer({ rating: 1 })}>
                 Again
+                {data?.intervals && <span className="interval">{formatInterval(data.intervals[1])}</span>}
               </button>
               <button className="hard" disabled={busy} onClick={() => answer({ action: "add_to_review" })}>
                 Add to review
@@ -248,6 +250,7 @@ export default function Study({ deckId, category, season }: Props) {
               {RATINGS.map((r) => (
                 <button key={r.value} className={r.cls} disabled={busy} onClick={() => answer({ rating: r.value })}>
                   {r.label}
+                  {data?.intervals && <span className="interval">{formatInterval(data.intervals[r.value])}</span>}
                 </button>
               ))}
             </div>

@@ -56,3 +56,18 @@ export function schedule(
   const scheduler = fsrs({ request_retention: desiredRetention, enable_fuzz: true });
   return fromFsrsCard(scheduler.next(toFsrsCard(row, now), now, rating).card);
 }
+
+/**
+ * How long until the card would be due again for each rating, in ms (no fuzz, so the real
+ * interval may differ by a little). Used to label the answer buttons.
+ */
+export function previewIntervals(
+  row: CardStateRow | null | undefined,
+  now: Date,
+  desiredRetention: number,
+): Record<1 | 2 | 3 | 4, number> {
+  const scheduler = fsrs({ request_retention: desiredRetention, enable_fuzz: false });
+  const card = toFsrsCard(row, now);
+  const after = (g: Grade) => scheduler.next(card, now, g).card.due.getTime() - now.getTime();
+  return { 1: after(1 as Grade), 2: after(2 as Grade), 3: after(3 as Grade), 4: after(4 as Grade) };
+}

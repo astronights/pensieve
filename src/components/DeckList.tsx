@@ -6,32 +6,25 @@ import type { DeckSummary } from "@/lib/queue";
 
 const STORAGE_KEY = "pensieve:expanded-decks";
 
-function DeckLink({ deck, subCount }: { deck: DeckSummary; subCount?: number }) {
-  const kind = deck.kind === "srs" ? "spaced repetition" : "browse";
+function Counts({ deck }: { deck: DeckSummary }) {
   return (
-    <Link href={`/study/${encodeURIComponent(deck.id)}`} className="deck-link">
-      <span>
-        {deck.name}
-        <br />
-        <span className="muted">
-          {deck.parent ? null : kind}
-          {subCount ? `${deck.parent ? "" : " · "}${subCount} sub-deck${subCount === 1 ? "" : "s"}` : null}
-        </span>
+    <span className="counts">
+      <span className={`pill due${deck.due ? "" : " zero"}`} title="due for review">
+        {deck.due}
       </span>
-      <span className="counts">
-        <span className="count-due" title="due">{deck.due}</span>
-        <span className="count-new" title={deck.kind === "srs" ? "new today" : "unseen"}>
-          {deck.new}
-        </span>
+      <span className={`pill new${deck.new ? "" : " zero"}`} title={deck.kind === "srs" ? "new today" : "unseen"}>
+        {deck.new}
       </span>
-    </Link>
+    </span>
   );
 }
+
+const studyHref = (id: string) => `/study/${encodeURIComponent(id)}`;
 
 export default function DeckList({ decks }: { decks: DeckSummary[] }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  // Remember which parents are open on this device (best effort).
+  // Remember which decks are open on this device (best effort).
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
@@ -59,45 +52,60 @@ export default function DeckList({ decks }: { decks: DeckSummary[] }) {
   for (const d of decks) {
     if (d.parent) children.set(d.parent, [...(children.get(d.parent) ?? []), d]);
   }
-  const topLevel = decks.filter((d) => !d.parent);
-  const anyNested = children.size > 0;
 
   return (
     <ul className="deck-list">
-      {topLevel.map((deck) => {
-        const subs = children.get(deck.id) ?? [];
-        const open = expanded.has(deck.id);
-        return (
-          <li key={deck.id} className="deck-group">
-            <div className="deck-row">
-              {subs.length === 0 && anyNested && <span className="expand-spacer" aria-hidden="true" />}
-              {subs.length > 0 && (
-                <button
-                  type="button"
-                  className="expand"
-                  aria-expanded={open}
-                  aria-label={`${open ? "Hide" : "Show"} sub-decks of ${deck.name}`}
-                  onClick={() => toggle(deck.id)}
-                >
-                  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                    <path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
+      {decks
+        .filter((d) => !d.parent)
+        .map((deck) => {
+          const subs = children.get(deck.id) ?? [];
+          const open = subs.length > 0 && expanded.has(deck.id);
+          return (
+            <li key={deck.id} className={`deck-card${open ? " open" : ""}`}>
+              <div className="deck-head">
+                <Link href={studyHref(deck.id)} className="deck-main">
+                  <span className="deck-title">
+                    <span className="deck-name">
+                      {deck.name}
+                      {deck.kind === "browse" && <span className="tag">Browse</span>}
+                    </span>
+                    {subs.length > 0 && (
+                      <span className="deck-sub muted">
+                        {subs.length} deck{subs.length === 1 ? "" : "s"}
+                      </span>
+                    )}
+                  </span>
+                  <Counts deck={deck} />
+                </Link>
+                {subs.length > 0 && (
+                  <button
+                    type="button"
+                    className="deck-toggle"
+                    aria-expanded={open}
+                    aria-label={`${open ? "Hide" : "Show"} decks in ${deck.name}`}
+                    onClick={() => toggle(deck.id)}
+                  >
+                    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                      <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              {open && (
+                <ul className="deck-children">
+                  {subs.map((sub) => (
+                    <li key={sub.id}>
+                      <Link href={studyHref(sub.id)} className="deck-child">
+                        <span className="deck-name">{sub.name}</span>
+                        <Counts deck={sub} />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
               )}
-              <DeckLink deck={deck} subCount={subs.length} />
-            </div>
-            {open && subs.length > 0 && (
-              <ul className="sub-decks">
-                {subs.map((sub) => (
-                  <li key={sub.id}>
-                    <DeckLink deck={sub} />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
-        );
-      })}
+            </li>
+          );
+        })}
     </ul>
   );
 }

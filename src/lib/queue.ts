@@ -2,6 +2,7 @@ import { and, asc, eq, lte, ne, or, type SQL, sql } from "drizzle-orm";
 import type { DB } from "@/db";
 import { cards, cardState, decks, type DeckKind, type MediaItem } from "@/db/schema";
 import { clientMeta } from "./card-extras";
+import { previewIntervals } from "./fsrs";
 import { notFound } from "./errors";
 import { getSettings } from "./settings";
 
@@ -41,6 +42,8 @@ export type NextResult = {
   card: CardDTO | null;
   source: "due" | "learn_ahead" | "new" | "unseen" | null;
   counts: { due: number; new: number; unseen: number };
+  /** Time until due again for each rating 1–4 (ms), for labelling the answer buttons. */
+  intervals?: Record<1 | 2 | 3 | 4, number>;
 };
 
 export type NextFilters = {
@@ -173,6 +176,14 @@ export async function nextCard(
   filters: NextFilters = {},
   now = new Date(),
 ): Promise<NextResult> {
+  const result = await pickNext(db, deckId, filters, now);
+  if (!result.card) return result;
+  const [state] = await db.select().from(cardState).where(eq(cardState.cardId, result.card.id)).limit(1);
+  const { desired_retention } = await getSettings(db);
+  return { ...result, intervals: previewIntervals(state, now, desired_retention) };
+}
+
+async function pickNext(db: DB, deckId: string, filters: NextFilters, now: Date): Promise<NextResult> {
   const [summary] = await listDecks(db, now, deckId);
   if (!summary) throw notFound(`Deck not found: ${deckId}`);
   const deck = { id: summary.id, name: summary.name, kind: summary.kind };

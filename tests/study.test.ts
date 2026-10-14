@@ -167,6 +167,20 @@ describe("SRS decks", () => {
     expect((await nextCard(db, "lang", { exclude: "lang:002" }, T0)).card!.id).toBe("lang:000");
   });
 
+  it("includes the next interval for each rating", async () => {
+    await importCards(db, srsDeck(1));
+    const MIN = 60_000;
+    expect((await nextCard(db, "lang", {}, T0)).intervals).toEqual({ 1: MIN, 2: 6 * MIN, 3: 10 * MIN, 4: 8 * DAY });
+    // After graduating, intervals grow; Again goes back to a short relearning step.
+    await applyReview(db, { card_id: "lang:000", rating: 3 }, at(-3 * DAY));
+    await applyReview(db, { card_id: "lang:000", rating: 3 }, at(-3 * DAY + 10 * MIN));
+    const { intervals } = await nextCard(db, "lang", {}, T0);
+    expect(intervals![1]).toBe(10 * MIN);
+    expect(intervals![2]).toBeLessThan(intervals![3]);
+    expect(intervals![3]).toBeLessThan(intervals![4]);
+    expect(intervals![3]).toBeGreaterThan(DAY);
+  });
+
   it("learns ahead when nothing else is left", async () => {
     await importCards(db, srsDeck(1));
     await applyReview(db, { card_id: "lang:000", rating: 1 }, T0);
