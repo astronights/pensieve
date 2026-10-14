@@ -5,16 +5,18 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "vercel-build": "npm run db:deploy && next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:deploy": "tsx --tsconfig tsconfig.json scripts/migrate.ts",
     "db:check": "drizzle-kit check",
-    "seed": "tsx --tsconfig tsconfig.json scripts/seed.ts",
-    "test:e2e": "playwright test"
+    "seed": "tsx --tsconfig tsconfig.json scripts/seed.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",

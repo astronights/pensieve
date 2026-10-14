@@ -19,6 +19,13 @@ npm run dev
 vercel --prod                    # deploy
 ```
 
+### Migrations on deploy
+
+Vercel runs the `vercel-build` script, which applies any pending migrations in `./drizzle`
+(`npm run db:deploy`) and then runs `next build`, so a fresh Neon database gets its tables on the
+first deploy. Set `SEED_DEMO=1` in Vercel to also load the 20 demo cards (safe to leave on: it
+upserts and never resets progress). If `DATABASE_URL_UNPOOLED` is set it is used for migrations.
+
 A `DATABASE_URL` on `*.neon.tech` uses the Neon serverless driver; any other host (local Postgres, CI) uses `pg`.
 
 ## API
