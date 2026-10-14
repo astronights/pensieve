@@ -37,19 +37,21 @@ function parseArgs(argv: string[]) {
 
 const log = (msg: string) => console.log(`${new Date().toISOString().slice(11, 19)}  ${msg}`);
 
+// Evaluated as page source (not via globalThis) so a top-level `let`/`const questions` is visible too;
+// only `var` declarations end up on globalThis.
+const QUESTIONS_LENGTH = "typeof questions !== 'undefined' && Array.isArray(questions) ? questions.length : null";
+const QUESTIONS = "questions";
+
 /** Checks every frame (the data lives in a nested Google iframe) until `questions` is filled. */
 async function waitForQuestions(page: Page, timeoutSeconds: number): Promise<RawQuestion[] | null> {
   const deadline = Date.now() + timeoutSeconds * 1000;
   for (let attempt = 1; Date.now() < deadline; attempt++) {
     for (const frame of page.frames()) {
       try {
-        const length = await frame.evaluate(() => {
-          const q = (globalThis as { questions?: unknown }).questions;
-          return Array.isArray(q) ? q.length : null;
-        });
+        const length = (await frame.evaluate(QUESTIONS_LENGTH)) as number | null;
         if (length) {
           log(`Found ${length} questions in ${frame.url() || "(frame)"}`);
-          return (await frame.evaluate(() => (globalThis as { questions?: unknown }).questions)) as RawQuestion[];
+          return (await frame.evaluate(QUESTIONS)) as RawQuestion[];
         }
       } catch {
         // Frame is cross-origin-restricted, navigating or detached; try again next round.
@@ -81,7 +83,9 @@ async function main() {
       for (const [i, frame] of page.frames().entries()) {
         await writeFile(path.join(debugDir, `frame-${i}.html`), await frame.content().catch(() => ""));
       }
-      throw new Error(`No question data after ${args.timeout}s. Frame snapshots saved to ${debugDir}/`);
+      throw new Error(
+        `No question data after ${args.timeout}s. Frame snapshots saved to ${debugDir}/ (share these to debug).`,
+      );
     }
 
     const write = (name: string, data: unknown) =>
