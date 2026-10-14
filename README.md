@@ -49,7 +49,36 @@ Deck shape: `{id, name?, kind?: srs|browse, parent?}`. Sub-decks are one level d
 top-level deck, and a sub-deck always has its parent's `kind` (omit it to inherit). Studying a parent
 draws from its own cards and all its sub-decks, its counts include theirs, and the daily new-card limit
 is shared across the whole group.
-Media are external URLs only. Card text is rendered as plain text (no HTML).
+Media are external URLs only. Card text (`front`, `back`) is **Markdown** (bold, italics, lists, links;
+raw HTML is never rendered). Optional extras in `meta` enrich the back of a card: `notes` (marking
+guidance, shown small under the answer), `explanation`, and `info` (`[{label, value}]` lines in the
+footer, shown with the category). `meta.raw` can hold the untouched source record; it is stored but
+never sent to the browser. `tags` are shown under the question.
+
+## Content scripts
+
+Raw source material lives in `content/` (gitignored, never committed).
+
+```bash
+npx playwright install chromium   # once
+npm run zql:scrape                # ZQL question bank → content/zql/{questions,report,sample}.json
+npm run zql:scrape -- --headed    # watch the browser; --timeout <s> to wait longer
+```
+
+`report.json` describes every field (types, fill rate, values, markup and media hosts in the text) and
+`sample.json` holds a representative set of full records, for planning the import mapping.
+
+```bash
+npm run zql:convert                                   # dry run → content/zql/cards.json + convert-report.json
+npm run zql:convert -- --upload --url https://<app>   # import (passcode from APP_PASSCODE or --passcode)
+```
+
+ZQL questions go into a **ZQL** deck (Seasons 1–7) and a **Cultish** deck (Season 0 = CQL S1, Season 1),
+type `srs`, with ids like `zql:S01:GW08a:R3:P2:Q1` (sorted in game order). The question and its
+`imageurl` (plus any video/audio in it) are the front; the answer is split into answer, `notes`
+("Accept: …", "Prompt: …") and `explanation` (after the first `;`), with answer images on the back.
+Topic, source and qid are shown in the back footer; everything, including the raw record, is kept in
+`meta`. Re-running the import only updates content; progress is never reset.
 
 ## Development
 

@@ -124,3 +124,51 @@ test("sub-decks: expand a parent and study one sub-deck", async ({ page, context
   const basics = decks.find((d: { id: string }) => d.id === "demo-spanish-basics");
   expect(basics).toMatchObject({ parent: "demo-spanish", kind: "srs" });
 });
+
+test("Markdown, notes, explanation and info show only after the reveal", async ({ page, context }) => {
+  const auth = { Authorization: `Bearer ${PASSCODE}` };
+  const res = await context.request.post("/api/import", {
+    headers: auth,
+    data: {
+      decks: [{ id: "e2e-md", name: "Markdown test", kind: "srs" }],
+      cards: [
+        {
+          id: "e2e-md:1",
+          deck: "e2e-md",
+          front: "**Which city** is *this*?",
+          back: "**Paris**",
+          tags: ["S1", "GW01"],
+          category: "World",
+          meta: {
+            notes: "Accept: **Lutetia**",
+            explanation: "Capital of France.",
+            info: [{ label: "Topic", value: "Capitals" }],
+            raw: { secret: "not sent to the browser" },
+          },
+        },
+      ],
+    },
+  });
+  expect(res.ok()).toBeTruthy();
+
+  await context.request.post("/api/login", { data: { passcode: PASSCODE } });
+  await page.goto("/study/e2e-md");
+  const card = page.locator(".card");
+  await expect(card.locator("strong", { hasText: "Which city" })).toBeVisible();
+  await expect(card.locator("em", { hasText: "this" })).toBeVisible();
+  await expect(card.getByText("S1 · GW01")).toBeVisible();
+  for (const hidden of ["Paris", "Lutetia", "Capital of France.", "Capitals", "World"]) {
+    await expect(card.getByText(hidden)).toHaveCount(0);
+  }
+
+  await page.getByRole("button", { name: "Show answer" }).click();
+  await expect(card.locator(".answer strong", { hasText: "Paris" })).toBeVisible();
+  await expect(card.locator(".notes strong", { hasText: "Lutetia" })).toBeVisible();
+  await expect(card.locator(".explanation")).toHaveText("Capital of France.");
+  await expect(card.locator(".card-info")).toContainText("Topic");
+  await expect(card.locator(".card-info")).toContainText("Capitals");
+  await expect(card.locator(".card-info")).toContainText("World");
+
+  const next = await (await context.request.get("/api/next?deck=e2e-md")).json();
+  expect(next.card.meta.raw).toBeUndefined();
+});

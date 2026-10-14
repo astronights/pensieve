@@ -16,7 +16,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:deploy": "tsx --tsconfig tsconfig.json scripts/migrate.ts",
     "db:check": "drizzle-kit check",
-    "seed": "tsx --tsconfig tsconfig.json scripts/seed.ts"
+    "seed": "tsx --tsconfig tsconfig.json scripts/seed.ts",
+    "zql:scrape": "tsx scripts/zql/scrape.ts",
+    "zql:convert": "tsx scripts/zql/convert.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
@@ -24,6 +26,8 @@
     "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-breaks": "^4.0.0",
     "ts-fsrs": "^5.4.2"
   },
   "devDependencies": {
