@@ -19,14 +19,12 @@
     "seed": "tsx --tsconfig tsconfig.json scripts/seed.ts"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.2.0",
     "drizzle-orm": "^0.45.4",
     "next": "16.4.0",
     "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "ts-fsrs": "^5.4.2",
-    "ws": "^8.22.0"
+    "ts-fsrs": "^5.4.2"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.9",
@@ -35,7 +33,6 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/ws": "^8.18.2",
     "dotenv": "^18.0.7",
     "drizzle-kit": "^0.31.11",
     "eslint": "^9",

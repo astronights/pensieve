@@ -26,7 +26,7 @@ Vercel runs the `vercel-build` script, which applies any pending migrations in `
 first deploy. Set `SEED_DEMO=1` in Vercel to also load the 20 demo cards (safe to leave on: it
 upserts and never resets progress). If `DATABASE_URL_UNPOOLED` is set it is used for migrations.
 
-A `DATABASE_URL` on `*.neon.tech` uses the Neon serverless driver; any other host (local Postgres, CI) uses `pg`.
+The app connects with node-postgres (`pg`) everywhere: Neon, local Postgres and CI use the same driver.
 
 ## API
 
