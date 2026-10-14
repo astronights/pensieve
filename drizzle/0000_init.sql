@@ -34,7 +34,7 @@ CREATE TABLE "decks" (
 );
 --> statement-breakpoint
 CREATE TABLE "review_log" (
-	"id" serial PRIMARY KEY NOT NULL,
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "review_log_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"card_id" text NOT NULL,
 	"reviewed_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"rating" smallint NOT NULL,
