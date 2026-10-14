@@ -70,7 +70,7 @@ describe("importCards", () => {
 
   it("re-importing updates content but keeps study progress", async () => {
     await importCards(db, parseImportPayload([card()]));
-    await applyReview(db, { card_id: "zql:S1:G3:2:5", rating: 3 });
+    await applyReview(db, { card_id: "zql:S1:G3:2:5", answer: "good" });
     const before = (await db.select().from(cardState))[0];
 
     await importCards(

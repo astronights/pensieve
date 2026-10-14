@@ -1,17 +1,31 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { Settings } from "@/lib/settings";
 
-function timeZones(current: string): string[] {
-  let zones: string[] = [];
-  try {
-    zones = Intl.supportedValuesOf("timeZone");
-  } catch {
-    // Older browsers: fall back to just the current value plus UTC.
-  }
-  return [...new Set(["UTC", current, ...zones])];
-}
+const FIELDS: { key: keyof Settings; label: string; help: string; min: number; max: number }[] = [
+  {
+    key: "again_gap",
+    label: "Again: back after",
+    help: "How many other cards you see before a missed card comes back.",
+    min: 1,
+    max: 100,
+  },
+  {
+    key: "good_gap",
+    label: "Good: back after",
+    help: "How many cards before a card you got right comes back. Doubles with each Good in a row.",
+    min: 1,
+    max: 500,
+  },
+  {
+    key: "learned_after",
+    label: "Learned after",
+    help: "Goods in a row before a card counts as learned and stops showing. Again resets the count.",
+    min: 1,
+    max: 10,
+  },
+];
 
 export default function SettingsForm({ initial }: { initial: Settings }) {
   const [values, setValues] = useState(initial);
@@ -19,7 +33,6 @@ export default function SettingsForm({ initial }: { initial: Settings }) {
   const [status, setStatus] = useState<{ kind: "idle" | "saving" | "saved" } | { kind: "error"; message: string }>({
     kind: "idle",
   });
-  const zones = useMemo(() => timeZones(values.timezone), [values.timezone]);
   const dirty = JSON.stringify(values) !== JSON.stringify(saved);
 
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) => {
@@ -47,56 +60,27 @@ export default function SettingsForm({ initial }: { initial: Settings }) {
 
   return (
     <form className="settings" onSubmit={save}>
-      <label className="field">
-        <span className="field-label">New cards per day</span>
-        <span className="field-help">Per spaced-repetition deck. Reviews of cards you&apos;ve already seen are never capped.</span>
-        <input
-          type="number"
-          inputMode="numeric"
-          min={0}
-          max={1000}
-          step={1}
-          required
-          value={values.daily_new_limit}
-          onChange={(e) => set("daily_new_limit", e.target.valueAsNumber)}
-        />
-      </label>
-
-      <label className="field">
-        <span className="field-label">
-          Desired retention <output>{Math.round(values.desired_retention * 100)}%</output>
-        </span>
-        <span className="field-help">
-          How likely you should be to remember a card when it comes up. Higher means more frequent reviews.
-        </span>
-        <input
-          type="range"
-          min={0.7}
-          max={0.99}
-          step={0.01}
-          value={values.desired_retention}
-          onChange={(e) => set("desired_retention", e.target.valueAsNumber)}
-        />
-      </label>
-
-      <label className="field">
-        <span className="field-label">Timezone</span>
-        <span className="field-help">When &quot;today&quot; starts for the new-card limit.</span>
-        <select value={values.timezone} onChange={(e) => set("timezone", e.target.value)}>
-          {zones.map((z) => (
-            <option key={z} value={z}>
-              {z}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          className="link-button"
-          onClick={() => set("timezone", Intl.DateTimeFormat().resolvedOptions().timeZone)}
-        >
-          Use this device&apos;s timezone
-        </button>
-      </label>
+      {FIELDS.map((f) => (
+        <label key={f.key} className="field">
+          <span className="field-label">
+            {f.label}
+            <span className="field-value">
+              {values[f.key]} {f.key === "learned_after" ? "in a row" : "cards"}
+            </span>
+          </span>
+          <span className="field-help">{f.help}</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={f.min}
+            max={f.max}
+            step={1}
+            required
+            value={Number.isNaN(values[f.key]) ? "" : values[f.key]}
+            onChange={(e) => set(f.key, e.target.valueAsNumber)}
+          />
+        </label>
+      ))}
 
       <button type="submit" className="primary" disabled={!dirty || status.kind === "saving"}>
         {status.kind === "saving" ? "Saving…" : "Save"}

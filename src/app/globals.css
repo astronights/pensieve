@@ -7,7 +7,6 @@
   --border: #e7e5e4;
   --accent: #4f46e5;
   --again: #dc2626;
-  --hard: #d97706;
   --good: #16a34a;
   --easy: #2563eb;
   --on-accent: #ffffff;
@@ -25,7 +24,6 @@
   --border: #292524;
   --accent: #818cf8;
   --again: #f87171;
-  --hard: #fbbf24;
   --good: #4ade80;
   --easy: #60a5fa;
   --on-accent: #0c0a09;
@@ -40,7 +38,6 @@
     --border: #292524;
     --accent: #818cf8;
     --again: #f87171;
-    --hard: #fbbf24;
     --good: #4ade80;
     --easy: #60a5fa;
     --on-accent: #0c0a09;
@@ -86,43 +83,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 .muted { color: var(--muted); font-size: 0.9rem; }
 
-.deck-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.5rem; }
-.deck-row { display: flex; gap: 0.5rem; align-items: stretch; }
-.deck-link {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 1rem;
-  min-height: 64px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--card);
-  color: inherit;
-  text-decoration: none;
-}
-.expand {
-  width: 48px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted);
-}
-.expand-spacer { width: 48px; flex: none; }
-.expand svg { transition: transform 0.15s ease; }
-.expand[aria-expanded="true"] svg { transform: rotate(90deg); }
-.sub-decks {
-  list-style: none;
-  margin: 0.5rem 0 0;
-  padding: 0 0 0 calc(48px + 0.5rem);
-  display: grid;
-  gap: 0.5rem;
-}
-.sub-decks .deck-link { min-height: 56px; padding: 0.75rem 1rem; }
-.counts { display: flex; gap: 0.75rem; font-variant-numeric: tabular-nums; }
+.deck-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.75rem; }
+.counts { display: flex; gap: 0.4rem; align-items: center; font-variant-numeric: tabular-nums; }
 .count-due { color: var(--good); }
 .count-new { color: var(--easy); }
 
@@ -156,13 +118,11 @@ button:disabled { opacity: 0.5; cursor: default; }
   bottom: 0;
   padding-bottom: env(safe-area-inset-bottom);
 }
-.actions.three { grid-template-columns: repeat(3, 1fr); }
+.actions.two { grid-template-columns: repeat(2, 1fr); }
 .actions button { min-height: 64px; font-weight: 600; }
 .reveal { width: 100%; min-height: 64px; font-weight: 600; }
 .again { color: var(--again); }
-.hard { color: var(--hard); }
 .good { color: var(--good); }
-.easy { color: var(--easy); }
 
 form.stack { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 20dvh; }
 .error { color: var(--again); }
@@ -225,9 +185,8 @@ form.stack { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 20
   background: var(--card);
 }
 .field-label { font-weight: 600; display: flex; justify-content: space-between; }
-.field-label output { font-variant-numeric: tabular-nums; color: var(--accent); }
+.field-label .field-value { font-variant-numeric: tabular-nums; color: var(--accent); }
 .field-help { color: var(--muted); font-size: 0.85rem; }
-.field input[type="range"] { min-height: 44px; padding: 0; border: none; background: none; accent-color: var(--accent); }
 select {
   font: inherit;
   min-height: 48px;
@@ -299,3 +258,91 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .card-info div { display: flex; gap: 0.4rem; }
 .card-info dt::after { content: ":"; }
 .card-info dd { margin: 0; color: var(--fg); font-weight: 600; }
+
+/* Deck list: one card per top-level deck; its decks expand inside the same card */
+.deck-card {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  overflow: hidden;
+}
+.deck-head { display: flex; align-items: stretch; }
+.deck-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1rem 1rem 1.1rem;
+  min-height: 68px;
+  color: inherit;
+  text-decoration: none;
+}
+.deck-title { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.deck-name { font-weight: 600; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem; }
+.deck-sub { font-size: 0.8rem; }
+.deck-toggle {
+  flex: none;
+  width: 52px;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.deck-toggle svg { transition: transform 0.2s ease; }
+.deck-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.deck-children { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); background: var(--bg); }
+.deck-children li + li { border-top: 1px solid var(--border); }
+.deck-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 52px;
+  padding: 0.6rem 1rem 0.6rem 1.75rem;
+  color: inherit;
+  text-decoration: none;
+}
+.deck-child .deck-name { font-weight: 500; font-size: 0.95rem; }
+.deck-main:active, .deck-child:active { background: var(--border); }
+
+.tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  color: var(--accent);
+  border: 1px solid currentColor;
+}
+
+.pill {
+  min-width: 2rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.pill.due { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
+.pill.new { color: var(--easy); background: color-mix(in srgb, var(--easy) 14%, transparent); }
+.pill.zero { color: var(--muted); background: transparent; }
+.pill.done { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); white-space: nowrap; }
+
+/* What each answer does, under the button */
+.actions button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.1rem; line-height: 1.1; }
+.interval { font-size: 0.75rem; font-weight: 500; color: var(--muted); }
+
+/* Goods in a row so far, at the top of a card being learned */
+.streak { display: inline-flex; gap: 0.35rem; }
+.streak .dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; border: 1.5px solid var(--good); }
+.streak .dot.on { background: var(--good); }

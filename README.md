@@ -1,6 +1,21 @@
 # Pensieve
 
-Minimal flashcards: Next.js (App Router) + Neon Postgres (drizzle) + ts-fsrs, behind a single passcode.
+Minimal flashcards: Next.js (App Router) + Neon Postgres (drizzle), behind a single passcode.
+
+## How studying works
+
+Two answers, no daily limit:
+
+- **Again**: the card comes back after 5 other cards, and its count of Goods in a row resets to 0.
+- **Good**: the card comes back after 15 cards, then 30 (the gap doubles each time). The third Good
+  in a row marks it **learned**, and it isn't shown again.
+
+Cards are placed by how many answers ago they came up, not by time, so you can study as many
+cards in a sitting as you like. Each turn shows the card being learned whose turn has come, else
+the next new card, else the next card being learned (early). The numbers are in Settings.
+
+Browse decks show unseen cards in random order: **Next** just marks a card seen, and **Again**
+puts it into the Again/Good loop above.
 
 ## Setup (Vercel CLI, no Git integration)
 
@@ -23,8 +38,8 @@ vercel --prod                    # deploy
 
 Vercel runs the `vercel-build` script, which applies any pending migrations in `./drizzle`
 (`npm run db:deploy`) and then runs `next build`, so a fresh Neon database gets its tables on the
-first deploy. Set `SEED_DEMO=1` in Vercel to also load the 20 demo cards (safe to leave on: it
-upserts and never resets progress). If `DATABASE_URL_UNPOOLED` is set it is used for migrations.
+first deploy. Set `SEED_DEMO=1` to also load the 20 demo cards (CI does this for the end-to-end tests).
+Migration `0003_remove_demo` deleted the demo decks from existing databases. If `DATABASE_URL_UNPOOLED` is set it is used for migrations.
 
 The app connects with node-postgres (`pg`) everywhere: Neon, local Postgres and CI use the same driver.
 
@@ -35,20 +50,18 @@ Every route requires the session cookie or `Authorization: Bearer $APP_PASSCODE`
 | Route | |
 |---|---|
 | `POST /api/login` `{passcode}` | sets the httpOnly session cookie |
-| `GET /api/decks` | decks with `due`, `new` (SRS: capped by the daily limit; browse: unseen) and `unseen` |
-| `GET /api/next?deck=&category=&season=&exclude=` | next card: due FSRS cards first, then new cards (SRS: import order, daily cap) or a random unseen card (browse). `exclude` skips one card id; the study screen uses it to prefetch the next card |
-| `POST /api/review` `{card_id, rating: 1-4}` | runs FSRS, updates `card_state`, appends `review_log`. In browse decks, Hard/Good/Easy on a non-queued card only marks it seen; Again queues it into FSRS |
-| `POST /api/review` `{card_id, action: "add_to_review"}` | puts a card in the FSRS review queue (first due in 24h) |
+| `GET /api/decks` | decks with `learning`, `new` (never seen), `learned` and `total` card counts |
+| `GET /api/next?deck=&category=&season=&exclude=` | next card (see above) plus `outcomes`: what Again and Good would do. `exclude` skips one card id; the study screen uses it to prefetch the next card |
+| `POST /api/review` `{card_id, answer: "again" \| "good"}` | updates `card_state` and appends `review_log` (browse: Good on a card not being learned only marks it seen) |
 | `POST /api/review` `{card_id, action: "bookmark", value}` | bookmark toggle |
 | `POST /api/import` `[cards]` or `{decks, cards}` | upserts by id and never touches progress; max 5000 cards per request |
-| `GET` / `PATCH /api/settings` (UI at `/settings`) | `daily_new_limit` (15), `desired_retention` (0.90), `timezone` (UTC) |
+| `GET` / `PATCH /api/settings` (UI at `/settings`) | `again_gap` (5), `good_gap` (15), `learned_after` (3) |
 
 Card shape: `{id, deck, front, back, tags?, category?, media?: [{type: image|video|audio, url, side: front|back}], meta?: {season?, ...}}`.
 
 Deck shape: `{id, name?, kind?: srs|browse, parent?}`. Sub-decks are one level deep: `parent` must be a
 top-level deck, and a sub-deck always has its parent's `kind` (omit it to inherit). Studying a parent
-draws from its own cards and all its sub-decks, its counts include theirs, and the daily new-card limit
-is shared across the whole group.
+draws from its own cards and all its sub-decks, and its counts include theirs.
 Media are external URLs only. Card text (`front`, `back`) is **Markdown** (bold, italics, lists, links;
 raw HTML is never rendered). Optional extras in `meta` enrich the back of a card: `notes` (marking
 guidance, shown small under the answer), `explanation`, and `info` (`[{label, value}]` lines in the
