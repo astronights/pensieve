@@ -7,16 +7,27 @@ import type { DeckSummary } from "@/lib/queue";
 const STORAGE_KEY = "pensieve:expanded-decks";
 
 function Counts({ deck }: { deck: DeckSummary }) {
+  if (deck.total > 0 && deck.learned === deck.total) {
+    return <span className="pill done">Learned ✓</span>;
+  }
   return (
     <span className="counts">
-      <span className={`pill due${deck.due ? "" : " zero"}`} title="due for review">
-        {deck.due}
+      <span className={`pill due${deck.learning ? "" : " zero"}`} title="learning">
+        {deck.learning}
       </span>
-      <span className={`pill new${deck.new ? "" : " zero"}`} title={deck.kind === "srs" ? "new today" : "unseen"}>
+      <span className={`pill new${deck.new ? "" : " zero"}`} title="new">
         {deck.new}
       </span>
     </span>
   );
+}
+
+/** "3 decks · 120/576 learned" */
+function subtitle(deck: DeckSummary, subDecks: number): string | null {
+  const parts = [];
+  if (subDecks > 0) parts.push(`${subDecks} deck${subDecks === 1 ? "" : "s"}`);
+  if (deck.learned > 0) parts.push(`${deck.learned}/${deck.total} learned`);
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 const studyHref = (id: string) => `/study/${encodeURIComponent(id)}`;
@@ -69,10 +80,8 @@ export default function DeckList({ decks }: { decks: DeckSummary[] }) {
                       {deck.name}
                       {deck.kind === "browse" && <span className="tag">Browse</span>}
                     </span>
-                    {subs.length > 0 && (
-                      <span className="deck-sub muted">
-                        {subs.length} deck{subs.length === 1 ? "" : "s"}
-                      </span>
+                    {subtitle(deck, subs.length) && (
+                      <span className="deck-sub muted">{subtitle(deck, subs.length)}</span>
                     )}
                   </span>
                   <Counts deck={deck} />
@@ -96,7 +105,10 @@ export default function DeckList({ decks }: { decks: DeckSummary[] }) {
                   {subs.map((sub) => (
                     <li key={sub.id}>
                       <Link href={studyHref(sub.id)} className="deck-child">
-                        <span className="deck-name">{sub.name}</span>
+                        <span className="deck-title">
+                          <span className="deck-name">{sub.name}</span>
+                          {subtitle(sub, 0) && <span className="deck-sub muted">{subtitle(sub, 0)}</span>}
+                        </span>
                         <Counts deck={sub} />
                       </Link>
                     </li>

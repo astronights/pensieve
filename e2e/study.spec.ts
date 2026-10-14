@@ -26,12 +26,16 @@ test("login → deck list → SRS study loop", async ({ page }) => {
   await page.getByRole("link", { name: /Spanish \(demo\)/ }).click();
   await expect(page).toHaveURL(/\/study\/demo-spanish/);
 
-  // Study all 12 new cards (Easy), including the ones whose media fails to load.
-  for (let i = 0; i < 12; i++) {
+  // Only two answers. Good on every card three times in a row learns all 12 (including the ones
+  // whose media fails to load), and learned cards don't come back.
+  await page.getByRole("button", { name: "Show answer" }).click();
+  await expect(page.locator(".actions button")).toHaveText(["Again5 cards later", "Good15 cards later"]);
+  await page.getByRole("button", { name: /^Good/ }).click();
+  for (let i = 1; i < 36; i++) {
     await page.getByRole("button", { name: "Show answer" }).click();
-    await page.getByRole("button", { name: "Easy" }).click();
+    await page.getByRole("button", { name: /^Good/ }).click();
   }
-  await expect(page.getByText(/Nothing left in Spanish/)).toBeVisible();
+  await expect(page.getByText("You've learned every card in Spanish (demo).")).toBeVisible();
 });
 
 test("media failures show a note but keep the card text", async ({ page, context }) => {
@@ -42,13 +46,13 @@ test("media failures show a note but keep the card text", async ({ page, context
   await expect(page.getByText("media unavailable").first()).toBeVisible();
 });
 
-test("browse deck: Again sends the card to review, Next just moves on", async ({ page, context }) => {
+test("browse deck: Again sends the card to learning, Next just moves on", async ({ page, context }) => {
   await context.request.post("/api/login", { data: { passcode: PASSCODE } });
   await page.goto("/study/demo-trivia?category=science");
 
   await page.getByRole("button", { name: "Show answer" }).click();
-  await expect(page.getByRole("button", { name: "Add to review" })).toBeVisible();
-  await page.getByRole("button", { name: "Again" }).click();
+  await expect(page.getByRole("button", { name: "Next" })).toBeVisible();
+  await page.getByRole("button", { name: /^Again/ }).click();
 
   await page.getByRole("button", { name: "Show answer" }).click();
   // Answers save in the background; wait for that save before checking counts.
@@ -58,7 +62,7 @@ test("browse deck: Again sends the card to review, Next just moves on", async ({
 
   const decks = await (await context.request.get("/api/decks")).json();
   const trivia = decks.decks.find((d: { id: string }) => d.id === "demo-trivia");
-  expect(trivia.unseen).toBe(6);
+  expect(trivia).toMatchObject({ new: 6, learning: 1 });
 });
 
 test("settings page saves values", async ({ page, context }) => {
@@ -67,14 +71,16 @@ test("settings page saves values", async ({ page, context }) => {
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 
-  const limit = page.getByLabel(/New cards per day/);
-  await expect(limit).toHaveValue("15");
-  await limit.fill("20");
+  const gap = page.getByLabel(/Again: back after/);
+  await expect(gap).toHaveValue("5");
+  await gap.fill("3");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Saved.")).toBeVisible();
 
   const settings = await (await context.request.get("/api/settings")).json();
-  expect(settings.daily_new_limit).toBe(20);
+  expect(settings.again_gap).toBe(3);
+  // Put it back for the other tests.
+  await context.request.patch("/api/settings", { data: { again_gap: 5 } });
 
   await page.getByRole("link", { name: "Decks" }).click();
   await expect(page.getByRole("heading", { name: "Pensieve" })).toBeVisible();
@@ -117,7 +123,7 @@ test("sub-decks: expand a parent and study one sub-deck", async ({ page, context
 
   // Earlier tests may have studied these cards already, so either a card or "nothing left" is fine.
   await expect(
-    page.getByRole("button", { name: "Show answer" }).or(page.getByText(/Nothing left in Basics/)),
+    page.getByRole("button", { name: "Show answer" }).or(page.getByText(/learned every card in Basics/)),
   ).toBeVisible();
 
   const { decks } = await (await context.request.get("/api/decks")).json();
@@ -162,10 +168,9 @@ test("Markdown, notes, explanation and info show only after the reveal", async (
   }
 
   await page.getByRole("button", { name: "Show answer" }).click();
-  // A new card: each button shows when it would come back.
-  await expect(page.getByRole("button", { name: /^Again/ })).toContainText("1m");
-  await expect(page.getByRole("button", { name: /^Good/ })).toContainText("10m");
-  await expect(page.getByRole("button", { name: /^Easy/ })).toContainText("8d");
+  // Each button says how many cards later the card comes back.
+  await expect(page.getByRole("button", { name: /^Again/ })).toContainText("5 cards later");
+  await expect(page.getByRole("button", { name: /^Good/ })).toContainText("15 cards later");
   await expect(card.locator(".answer strong", { hasText: "Paris" })).toBeVisible();
   await expect(card.locator(".notes strong", { hasText: "Lutetia" })).toBeVisible();
   await expect(card.locator(".explanation")).toHaveText("Capital of France.");

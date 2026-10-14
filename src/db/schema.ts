@@ -2,8 +2,6 @@ import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   boolean,
-  check,
-  doublePrecision,
   index,
   integer,
   jsonb,
@@ -22,10 +20,8 @@ export type MediaItem = {
 };
 
 export const deckKind = pgEnum("deck_kind", ["srs", "browse"]);
-export const cardStage = pgEnum("card_stage", ["new", "learning", "review", "relearning"]);
 
 export type DeckKind = (typeof deckKind.enumValues)[number];
-export type CardStage = (typeof cardStage.enumValues)[number];
 
 export const decks = pgTable(
   "decks",
@@ -69,21 +65,22 @@ export const cardState = pgTable(
     cardId: text("card_id")
       .primaryKey()
       .references(() => cards.id, { onDelete: "cascade" }),
-    due: timestamp("due", { withTimezone: true }).notNull(),
-    stability: doublePrecision("stability").notNull().default(0),
-    difficulty: doublePrecision("difficulty").notNull().default(0),
-    state: cardStage("state").notNull().default("new"),
-    reps: integer("reps").notNull().default(0),
-    lapses: integer("lapses").notNull().default(0),
-    // ts-fsrs v5 tracks the position within (re)learning steps; needed to schedule short-term steps.
-    learningSteps: integer("learning_steps").notNull().default(0),
-    lastReview: timestamp("last_review", { withTimezone: true }),
+    // Goods in a row; reaching the "learned after" setting retires the card.
+    streak: smallint("streak").notNull().default(0),
+    // The card comes back once the answer counter (the latest review_log id) reaches this.
+    // Null when the card isn't being learned: never answered, only seen (browse) or learned.
+    dueAt: integer("due_at"),
+    seenAt: timestamp("seen_at", { withTimezone: true }),
+    learnedAt: timestamp("learned_at", { withTimezone: true }),
     bookmarked: boolean("bookmarked").notNull().default(false),
-    inReviewQueue: boolean("in_review_queue").notNull().default(false),
   },
-  (t) => [index("card_state_due_idx").on(t.due)],
+  (t) => [index("card_state_due_at_idx").on(t.dueAt)],
 );
 
+export const answerKind = pgEnum("answer", ["again", "good", "seen"]);
+export type Answer = (typeof answerKind.enumValues)[number];
+
+/** One row per answer. Its id doubles as the answer counter that positions cards in the queue. */
 export const reviewLog = pgTable(
   "review_log",
   {
@@ -92,18 +89,9 @@ export const reviewLog = pgTable(
       .notNull()
       .references(() => cards.id, { onDelete: "cascade" }),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }).notNull().defaultNow(),
-    rating: smallint("rating").notNull(),
-    stateBefore: cardStage("state_before").notNull(),
-    dueBefore: timestamp("due_before", { withTimezone: true }),
-    dueAfter: timestamp("due_after", { withTimezone: true }).notNull(),
-    stability: doublePrecision("stability").notNull(),
-    difficulty: doublePrecision("difficulty").notNull(),
+    answer: answerKind("answer").notNull(),
   },
-  (t) => [
-    index("review_log_card_idx").on(t.cardId),
-    index("review_log_reviewed_at_idx").on(t.reviewedAt),
-    check("review_log_rating_check", sql`${t.rating} between 1 and 4`),
-  ],
+  (t) => [index("review_log_card_idx").on(t.cardId)],
 );
 
 export const settings = pgTable("settings", {

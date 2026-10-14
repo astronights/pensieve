@@ -4,50 +4,42 @@ import { settings } from "@/db/schema";
 import { badRequest } from "./errors";
 
 export type Settings = {
-  daily_new_limit: number;
-  desired_retention: number;
-  /** IANA zone used to decide when "today" starts for the daily new-card cap. */
-  timezone: string;
+  /** Again: the card comes back after this many other cards. */
+  again_gap: number;
+  /** Good: the card comes back after this many cards, doubling with each Good in a row. */
+  good_gap: number;
+  /** Goods in a row that mark a card as learned; learned cards aren't shown again. */
+  learned_after: number;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
-  daily_new_limit: 15,
-  desired_retention: 0.9,
-  timezone: "UTC",
+  again_gap: 5,
+  good_gap: 15,
+  learned_after: 3,
 };
 
 const KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[];
 
-function isValidTimeZone(tz: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-}
+const LIMITS: Record<keyof Settings, [number, number]> = {
+  again_gap: [1, 100],
+  good_gap: [1, 500],
+  learned_after: [1, 10],
+};
 
 /** Validates one setting; returns the parsed value or throws with a readable message. */
 export function parseSetting<K extends keyof Settings>(key: K, value: unknown): Settings[K] {
-  switch (key) {
-    case "daily_new_limit":
-      if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > 1000) {
-        throw badRequest("daily_new_limit must be an integer between 0 and 1000");
-      }
-      return value as Settings[K];
-    case "desired_retention":
-      if (typeof value !== "number" || !(value >= 0.7 && value <= 0.99)) {
-        throw badRequest("desired_retention must be a number between 0.70 and 0.99");
-      }
-      return value as Settings[K];
-    case "timezone":
-      if (typeof value !== "string" || !isValidTimeZone(value)) {
-        throw badRequest("timezone must be a valid IANA time zone, e.g. Europe/London");
-      }
-      return value as Settings[K];
-    default:
-      throw badRequest(`Unknown setting: ${String(key)}`);
+  const limits = LIMITS[key];
+  if (!limits) throw badRequest(`Unknown setting: ${String(key)}`);
+  const [min, max] = limits;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
+    throw badRequest(`${key} must be a whole number between ${min} and ${max}`);
   }
+  return value as Settings[K];
+}
+
+/** How many cards later a card returns after a Good that brings its streak to `streak`. */
+export function goodGap(s: Settings, streak: number): number {
+  return s.good_gap * 2 ** Math.max(0, streak - 1);
 }
 
 export function isSettingKey(key: string): key is keyof Settings {

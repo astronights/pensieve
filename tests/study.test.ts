@@ -5,15 +5,11 @@ import { cardState, reviewLog, settings as settingsTable } from "@/db/schema";
 import { HttpError } from "@/lib/errors";
 import { importCards, parseImportPayload } from "@/lib/import";
 import { listDecks, nextCard } from "@/lib/queue";
-import { ADD_TO_REVIEW_DELAY_MS, applyReview, parseReviewInput } from "@/lib/review";
+import { applyReview, parseReviewInput } from "@/lib/review";
 import { SEED } from "@/lib/seed-data";
 import { getSettings, updateSettings } from "@/lib/settings";
 import { createTestDb } from "./helpers/db";
 
-const HOUR = 60 * 60 * 1000;
-const DAY = 24 * HOUR;
-const T0 = new Date("2026-03-10T12:00:00Z");
-const at = (ms: number) => new Date(T0.getTime() + ms);
 
 let db: DB;
 let close: () => Promise<void>;
@@ -44,206 +40,176 @@ const browseDeck = () =>
     ],
   });
 
-const deck = async (id: string, now = T0) => (await listDecks(db, now)).find((d) => d.id === id)!;
+const deck = async (id: string) => (await listDecks(db)).find((d) => d.id === id)!;
+const next = (deckId: string, filters = {}) => nextCard(db, deckId, filters);
+const again = (id: string) => applyReview(db, { card_id: id, answer: "again" });
+const good = (id: string) => applyReview(db, { card_id: id, answer: "good" });
+const id = (i: number) => `lang:${String(i).padStart(3, "0")}`;
+
+/** Answers whatever comes up next with `choose`, `n` times; returns the ids shown. */
+async function study(deckId: string, n: number, choose: (cardId: string) => "again" | "good" = () => "good") {
+  const shown: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const { card } = await next(deckId);
+    if (!card) break;
+    shown.push(card.id);
+    await applyReview(db, { card_id: card.id, answer: choose(card.id) });
+  }
+  return shown;
+}
 
 describe("settings", () => {
   it("uses defaults and validates updates", async () => {
-    expect(await getSettings(db)).toEqual({ daily_new_limit: 15, desired_retention: 0.9, timezone: "UTC" });
-    expect(await updateSettings(db, { desired_retention: 0.85 })).toMatchObject({ desired_retention: 0.85 });
-    await expect(updateSettings(db, { desired_retention: 2 })).rejects.toThrow(HttpError);
-    await expect(updateSettings(db, { timezone: "Mars/Olympus" })).rejects.toThrow(HttpError);
-    await expect(updateSettings(db, { nope: 1 })).rejects.toThrow(HttpError);
+    expect(await getSettings(db)).toEqual({ again_gap: 5, good_gap: 15, learned_after: 3 });
+    expect(await updateSettings(db, { good_gap: 20 })).toMatchObject({ good_gap: 20 });
+    await expect(updateSettings(db, { again_gap: 0 })).rejects.toThrow(HttpError);
+    await expect(updateSettings(db, { learned_after: 2.5 })).rejects.toThrow(HttpError);
+    await expect(updateSettings(db, { daily_new_limit: 15 })).rejects.toThrow(HttpError);
   });
 
   it("caches reads and refreshes after an update", async () => {
     await getSettings(db);
     // A write that bypasses updateSettings is not seen while cached...
-    await db.insert(settingsTable).values({ key: "daily_new_limit", value: 3 });
-    expect((await getSettings(db)).daily_new_limit).toBe(15);
+    await db.insert(settingsTable).values({ key: "again_gap", value: 3 });
+    expect((await getSettings(db)).again_gap).toBe(5);
     // ...but updateSettings invalidates the cache.
-    expect((await updateSettings(db, { timezone: "Europe/London" })).daily_new_limit).toBe(3);
+    expect((await updateSettings(db, { good_gap: 10 })).again_gap).toBe(3);
   });
 });
 
 describe("parseReviewInput", () => {
-  it("validates ratings and actions", () => {
-    expect(parseReviewInput({ card_id: "a", rating: 3 })).toEqual({ card_id: "a", rating: 3 });
-    expect(parseReviewInput({ card_id: "a", action: "add_to_review" })).toEqual({
+  it("validates answers and actions", () => {
+    expect(parseReviewInput({ card_id: "a", answer: "good" })).toEqual({ card_id: "a", answer: "good" });
+    expect(parseReviewInput({ card_id: "a", action: "bookmark", value: true })).toEqual({
       card_id: "a",
-      action: "add_to_review",
+      action: "bookmark",
+      value: true,
     });
-    expect(() => parseReviewInput({ card_id: "a", rating: 5 })).toThrow(HttpError);
-    expect(() => parseReviewInput({ card_id: "a", rating: "3" })).toThrow(HttpError);
-    expect(() => parseReviewInput({ rating: 3 })).toThrow(HttpError);
+    expect(() => parseReviewInput({ card_id: "a", answer: "easy" })).toThrow(HttpError);
+    expect(() => parseReviewInput({ card_id: "a", rating: 3 })).toThrow(HttpError);
+    expect(() => parseReviewInput({ answer: "good" })).toThrow(HttpError);
     expect(() => parseReviewInput({ card_id: "a" })).toThrow(HttpError);
   });
 });
 
 describe("SRS decks", () => {
-  it("serves new cards in import order up to the daily cap", async () => {
+  it("serves new cards in import order with no daily limit", async () => {
+    await importCards(db, srsDeck(40));
+    expect(await deck("lang")).toMatchObject({ learning: 0, new: 40, learned: 0, total: 40 });
+    // With Good every time, the first card is due again only after 15 others.
+    const shown = await study("lang", 16);
+    expect(shown.slice(0, 15)).toEqual(Array.from({ length: 15 }, (_, i) => id(i)));
+    expect(await deck("lang")).toMatchObject({ learning: 16, new: 24 });
+  });
+
+  it("Again brings a card back after 5 other cards", async () => {
     await importCards(db, srsDeck(20));
-    expect(await deck("lang")).toMatchObject({ due: 0, new: 15, unseen: 20 });
-
-    for (let i = 0; i < 15; i++) {
-      const next = await nextCard(db, "lang", {}, at(i * 1000));
-      expect(next.source).toBe("new");
-      expect(next.card!.id).toBe(`lang:${String(i).padStart(3, "0")}`);
-      await applyReview(db, { card_id: next.card!.id, rating: 4 }, at(i * 1000));
-    }
-    expect(await deck("lang", at(HOUR))).toMatchObject({ new: 0, unseen: 5 });
-    expect((await nextCard(db, "lang", {}, at(HOUR))).card).toBeNull();
-
-    // Next UTC day the cap resets.
-    expect(await deck("lang", at(DAY))).toMatchObject({ new: 5 });
+    const shown = await study("lang", 8, (c) => (c === id(0) ? "again" : "good"));
+    expect(shown).toEqual([id(0), id(1), id(2), id(3), id(4), id(5), id(0), id(6)]);
   });
 
-  it("honours the configured timezone for the daily reset", async () => {
-    await importCards(db, srsDeck(3));
-    await updateSettings(db, { daily_new_limit: 1, timezone: "America/New_York" });
-    // 12:00Z = 08:00 New York. Review one card.
-    await applyReview(db, { card_id: "lang:000", rating: 4 }, T0);
-    // 03:30Z next day = 23:30 New York, still the same local day.
-    expect(await deck("lang", at(15.5 * HOUR))).toMatchObject({ new: 0 });
-    // 04:30Z next day = 00:30 New York, a new local day.
-    expect(await deck("lang", at(16.5 * HOUR))).toMatchObject({ new: 1 });
+  it("Good moves a card back 15, then 30 cards; the third Good in a row learns it", async () => {
+    await importCards(db, srsDeck(100));
+    const shown = await study("lang", 48);
+    const turns = shown.flatMap((c, i) => (c === id(0) ? [i] : []));
+    // Shown at answer 0, back after 15 others (index 16), then after 30 more (index 47).
+    expect(turns).toEqual([0, 16, 47]);
+    const [s] = await db.select().from(cardState).where(eq(cardState.cardId, id(0)));
+    expect(s).toMatchObject({ streak: 3, dueAt: null });
+    expect(s.learnedAt).not.toBeNull();
+    expect(await deck("lang")).toMatchObject({ learned: 1 });
   });
 
-  it("runs FSRS, updates card_state and appends review_log", async () => {
+  it("Again resets the streak; learned cards are never shown again", async () => {
     await importCards(db, srsDeck(1));
-    const r1 = await applyReview(db, { card_id: "lang:000", rating: 3 }, T0);
-    expect(r1).toMatchObject({ scheduled: true, state: "learning", deck: "lang" });
-
-    const [s1] = await db.select().from(cardState);
-    expect(s1).toMatchObject({ reps: 1, lapses: 0, inReviewQueue: false });
-    expect(s1.lastReview).toEqual(T0);
-    expect(s1.due.getTime()).toBeGreaterThan(T0.getTime());
-
-    // Graduate it, then fail it.
-    const r2 = await applyReview(db, { card_id: "lang:000", rating: 3 }, s1.due);
-    expect(r2.state).toBe("review");
-    const [s2] = await db.select().from(cardState);
-    const r3 = await applyReview(db, { card_id: "lang:000", rating: 1 }, s2.due);
-    expect(r3.state).toBe("relearning");
-
-    const logs = await db.select().from(reviewLog).orderBy(reviewLog.id);
-    expect(logs.map((l) => [l.rating, l.stateBefore])).toEqual([
-      [3, "new"],
-      [3, "learning"],
-      [1, "review"],
-    ]);
-    expect(logs[0].dueBefore).toBeNull();
-    expect(logs[1].dueBefore).toEqual(s1.due);
-    expect(logs[2].stability).toBeGreaterThan(0);
-    expect((await db.select().from(cardState))[0]).toMatchObject({ reps: 3, lapses: 1 });
+    expect(await good(id(0))).toMatchObject({ streak: 1, learned: false });
+    expect(await good(id(0))).toMatchObject({ streak: 2 });
+    expect(await again(id(0))).toMatchObject({ streak: 0, learned: false });
+    await good(id(0));
+    await good(id(0));
+    expect(await good(id(0))).toMatchObject({ streak: 3, learned: true, due_at: null });
+    expect((await next("lang")).card).toBeNull();
+    expect(await deck("lang")).toMatchObject({ learning: 0, new: 0, learned: 1, total: 1 });
   });
 
-  it("shows due reviews before new cards, oldest due first", async () => {
-    await importCards(db, srsDeck(3));
-    await applyReview(db, { card_id: "lang:001", rating: 1 }, T0); // due ~1 min
-    await applyReview(db, { card_id: "lang:002", rating: 1 }, at(-60_000)); // due earlier
-    const later = at(HOUR);
-    expect(await deck("lang", later)).toMatchObject({ due: 2, new: 1 });
-    const next = await nextCard(db, "lang", {}, later);
-    expect(next).toMatchObject({ source: "due", card: { id: "lang:002", state: "learning" } });
+  it("logs every answer", async () => {
+    await importCards(db, srsDeck(1));
+    await good(id(0));
+    await again(id(0));
+    const logs = await db.select().from(reviewLog).orderBy(reviewLog.id);
+    expect(logs.map((l) => l.answer)).toEqual(["good", "again"]);
+  });
+
+  it("describes what each answer will do", async () => {
+    await importCards(db, srsDeck(1));
+    expect((await next("lang")).outcomes).toEqual({ again: 5, good: 15, streak: 0, learnedAfter: 3 });
+    await good(id(0));
+    expect((await next("lang")).outcomes).toMatchObject({ good: 30, streak: 1 });
+    await good(id(0));
+    expect((await next("lang")).outcomes).toMatchObject({ good: "learned", streak: 2 });
+  });
+
+  it("uses the configured gaps and streak length", async () => {
+    await importCards(db, srsDeck(20));
+    await updateSettings(db, { again_gap: 2, good_gap: 3, learned_after: 2 });
+    const shown = await study("lang", 6, (c) => (c === id(1) ? "again" : "good"));
+    // Again on id(1): two other cards, then it's back (alongside id(0), whose Good gap of 3 is up).
+    expect(shown).toEqual([id(0), id(1), id(2), id(3), id(0), id(1)]);
+    await study("lang", 20);
+    expect((await deck("lang")).learned).toBeGreaterThan(0);
+  });
+
+  it("shows the next card being learned early when nothing else is left", async () => {
+    await importCards(db, srsDeck(2));
+    await good(id(0));
+    await again(id(1));
+    // Neither card's turn has come and there are no new cards: the one next in line comes up.
+    expect(await next("lang")).toMatchObject({ source: "ahead", card: { id: id(1), streak: 0, learning: true } });
   });
 
   it("exclude skips the current card (used for prefetching)", async () => {
-    await importCards(db, srsDeck(3));
-    expect((await nextCard(db, "lang", { exclude: "lang:000" }, T0)).card!.id).toBe("lang:001");
-    await applyReview(db, { card_id: "lang:001", rating: 1 }, at(-HOUR));
-    // A due card is skipped too when excluded.
-    expect((await nextCard(db, "lang", {}, T0)).card!.id).toBe("lang:001");
-    expect((await nextCard(db, "lang", { exclude: "lang:001" }, T0)).card!.id).toBe("lang:000");
-  });
-
-  it("prefetch never goes past the daily new-card cap", async () => {
-    await importCards(db, srsDeck(3));
-    await updateSettings(db, { daily_new_limit: 1 });
-    // lang:000 is the one new card allowed today and is on screen, not yet answered.
-    expect(await nextCard(db, "lang", { exclude: "lang:000" }, T0)).toMatchObject({ card: null });
-    // Excluding a card that isn't new leaves the cap alone.
-    await applyReview(db, { card_id: "lang:002", rating: 1 }, at(-DAY));
-    await updateSettings(db, { daily_new_limit: 2 });
-    expect((await nextCard(db, "lang", { exclude: "lang:002" }, T0)).card!.id).toBe("lang:000");
-  });
-
-  it("includes the next interval for each rating", async () => {
-    await importCards(db, srsDeck(1));
-    const MIN = 60_000;
-    expect((await nextCard(db, "lang", {}, T0)).intervals).toEqual({ 1: MIN, 2: 6 * MIN, 3: 10 * MIN, 4: 8 * DAY });
-    // After graduating, intervals grow; Again goes back to a short relearning step.
-    await applyReview(db, { card_id: "lang:000", rating: 3 }, at(-3 * DAY));
-    await applyReview(db, { card_id: "lang:000", rating: 3 }, at(-3 * DAY + 10 * MIN));
-    const { intervals } = await nextCard(db, "lang", {}, T0);
-    expect(intervals![1]).toBe(10 * MIN);
-    expect(intervals![2]).toBeLessThan(intervals![3]);
-    expect(intervals![3]).toBeLessThan(intervals![4]);
-    expect(intervals![3]).toBeGreaterThan(DAY);
-  });
-
-  it("learns ahead when nothing else is left", async () => {
-    await importCards(db, srsDeck(1));
-    await applyReview(db, { card_id: "lang:000", rating: 1 }, T0);
-    const next = await nextCard(db, "lang", {}, T0);
-    expect(next).toMatchObject({ source: "learn_ahead", card: { id: "lang:000" } });
-  });
-
-  it("a desired retention change affects intervals", async () => {
-    await importCards(db, srsDeck(2));
-    const graduate = async (id: string) => {
-      await applyReview(db, { card_id: id, rating: 4 }, T0);
-      const [s] = await db.select().from(cardState).where(eq(cardState.cardId, id));
-      await applyReview(db, { card_id: id, rating: 3 }, s.due);
-      const [after] = await db.select().from(cardState).where(eq(cardState.cardId, id));
-      return after.due.getTime() - s.due.getTime();
-    };
-    await updateSettings(db, { desired_retention: 0.97 });
-    const strict = await graduate("lang:000");
-    await updateSettings(db, { desired_retention: 0.75 });
-    const lax = await graduate("lang:001");
-    expect(lax).toBeGreaterThan(strict);
+    await importCards(db, srsDeck(10));
+    expect((await next("lang", { exclude: id(0) })).card!.id).toBe(id(1));
+    await again(id(9));
+    await study("lang", 5); // id(0)..id(4); now id(9)'s turn has come
+    expect(await next("lang")).toMatchObject({ source: "due", card: { id: id(9) } });
+    expect(await next("lang", { exclude: id(9) })).toMatchObject({ source: "new", card: { id: id(5) } });
   });
 
   it("bookmarking an unseen card does not consume it", async () => {
     await importCards(db, srsDeck(1));
-    await applyReview(db, { card_id: "lang:000", action: "bookmark", value: true }, T0);
-    expect(await deck("lang")).toMatchObject({ due: 0, new: 1 });
-    expect(await nextCard(db, "lang", {}, T0)).toMatchObject({
-      source: "new",
-      card: { id: "lang:000", bookmarked: true },
-    });
+    await applyReview(db, { card_id: id(0), action: "bookmark", value: true });
+    expect(await deck("lang")).toMatchObject({ learning: 0, new: 1 });
+    expect(await next("lang")).toMatchObject({ source: "new", card: { id: id(0), bookmarked: true } });
   });
 
   it("rejects unknown cards and decks", async () => {
-    await expect(applyReview(db, { card_id: "missing", rating: 3 })).rejects.toMatchObject({ status: 404 });
-    await expect(nextCard(db, "missing")).rejects.toMatchObject({ status: 404 });
+    await expect(good("missing")).rejects.toMatchObject({ status: 404 });
+    await expect(next("missing")).rejects.toMatchObject({ status: 404 });
   });
 });
 
 describe("browse decks", () => {
-  it("serves only unseen cards, marking Good as seen without FSRS", async () => {
+  it("serves only unseen cards; Next marks them seen", async () => {
     await importCards(db, browseDeck());
     const seen = new Set<string>();
     for (let i = 0; i < 3; i++) {
-      const next = await nextCard(db, "quiz", {}, T0);
-      expect(next.source).toBe("unseen");
-      expect(seen.has(next.card!.id)).toBe(false);
-      seen.add(next.card!.id);
-      expect(await applyReview(db, { card_id: next.card!.id, rating: 3 }, T0)).toMatchObject({
-        scheduled: false,
-        in_review_queue: false,
-      });
+      const n = await next("quiz");
+      expect(n.source).toBe("new");
+      expect(seen.has(n.card!.id)).toBe(false);
+      seen.add(n.card!.id);
+      expect(await good(n.card!.id)).toMatchObject({ streak: 0, due_at: null, learned: false });
     }
-    expect((await nextCard(db, "quiz", {}, at(DAY))).card).toBeNull();
-    expect(await deck("quiz", at(DAY))).toMatchObject({ due: 0, new: 0, unseen: 0 });
-    expect(await db.select().from(reviewLog)).toHaveLength(0);
+    expect((await next("quiz")).card).toBeNull();
+    expect(await deck("quiz")).toMatchObject({ learning: 0, new: 0, learned: 0 });
+    expect((await db.select().from(reviewLog)).map((l) => l.answer)).toEqual(["seen", "seen", "seen"]);
   });
 
   it("filters by category and season", async () => {
     await importCards(db, browseDeck());
     const ids = async (f: { category?: string; season?: string }) => {
       const out = new Set<string>();
-      for (let i = 0; i < 20; i++) out.add((await nextCard(db, "quiz", f, T0)).card!.id);
+      for (let i = 0; i < 20; i++) out.add((await next("quiz", f)).card!.id);
       return [...out].sort();
     };
     expect(await ids({ category: "science" })).toEqual(["q1", "q3"]);
@@ -251,44 +217,16 @@ describe("browse decks", () => {
     expect(await ids({ category: "science", season: "S2" })).toEqual(["q3"]);
   });
 
-  it("rating Again brings the card into FSRS and the review queue", async () => {
+  it("Again brings a card into the Again/Good loop", async () => {
     await importCards(db, browseDeck());
-    const r = await applyReview(db, { card_id: "q1", rating: 1 }, T0);
-    expect(r).toMatchObject({ scheduled: true, in_review_queue: true, state: "learning" });
-    expect(await db.select().from(reviewLog)).toHaveLength(1);
-
-    const later = at(HOUR);
-    expect(await deck("quiz", later)).toMatchObject({ due: 1, unseen: 2 });
-    expect(await nextCard(db, "quiz", {}, later)).toMatchObject({ source: "due", card: { id: "q1" } });
-
-    // Once queued, every rating goes through FSRS.
-    expect(await applyReview(db, { card_id: "q1", rating: 3 }, later)).toMatchObject({ scheduled: true });
-    expect(await db.select().from(reviewLog)).toHaveLength(2);
-  });
-
-  it("add to review queues an unseen card for tomorrow", async () => {
-    await importCards(db, browseDeck());
-    const r = await applyReview(db, { card_id: "q2", action: "add_to_review" }, T0);
-    expect(r).toMatchObject({ in_review_queue: true, state: "new", scheduled: false });
-    expect(r.due).toEqual(at(ADD_TO_REVIEW_DELAY_MS));
-
-    expect(await deck("quiz", T0)).toMatchObject({ due: 0, unseen: 2 });
-    expect(await deck("quiz", at(DAY))).toMatchObject({ due: 1 });
-    expect(await nextCard(db, "quiz", {}, at(DAY))).toMatchObject({ source: "due", card: { id: "q2" } });
-  });
-
-  it("add to review on a seen card queues it without resetting due for scheduled cards", async () => {
-    await importCards(db, browseDeck());
-    await applyReview(db, { card_id: "q1", rating: 3 }, T0); // seen only
-    await applyReview(db, { card_id: "q1", action: "add_to_review" }, at(HOUR));
-    const [s] = await db.select().from(cardState).where(eq(cardState.cardId, "q1"));
-    expect(s).toMatchObject({ inReviewQueue: true, due: at(HOUR + ADD_TO_REVIEW_DELAY_MS) });
-
-    await applyReview(db, { card_id: "q3", rating: 1 }, T0); // scheduled via FSRS
-    const [before] = await db.select().from(cardState).where(eq(cardState.cardId, "q3"));
-    await applyReview(db, { card_id: "q3", action: "add_to_review" }, at(HOUR));
-    const [after] = await db.select().from(cardState).where(eq(cardState.cardId, "q3"));
-    expect(after.due).toEqual(before.due);
+    expect(await again("q1")).toMatchObject({ streak: 0, learned: false });
+    expect(await deck("quiz")).toMatchObject({ learning: 1, new: 2 });
+    // Once learning, Good counts towards learning it instead of just marking it seen.
+    expect(await good("q1")).toMatchObject({ streak: 1 });
+    expect((await next("quiz", { category: "science", season: "S1" })).card).toMatchObject({
+      id: "q1",
+      learning: true,
+    });
   });
 });
 
@@ -300,23 +238,17 @@ describe("seed data", () => {
     const types = new Set(all.flatMap((c) => c.media.map((m) => m.type)));
     expect(types).toEqual(new Set(["image", "video", "audio"]));
 
-    const decks = await listDecks(db, T0);
-    expect(decks.map((d) => [d.id, d.kind, d.parent, d.unseen])).toEqual([
+    const decks = await listDecks(db);
+    expect(decks.map((d) => [d.id, d.kind, d.parent, d.new])).toEqual([
       ["demo-spanish-basics", "srs", "demo-spanish", 7],
       ["demo-spanish", "srs", null, 12],
       ["demo-trivia", "browse", null, 8],
       ["demo-spanish-media", "srs", "demo-spanish", 5],
     ]);
 
-    // Media cards are never skipped: the SRS loop visits all 12 cards.
-    const visited: string[] = [];
-    for (;;) {
-      const next = await nextCard(db, "demo-spanish", {}, T0);
-      if (!next.card || next.source !== "new") break;
-      visited.push(next.card.id);
-      await applyReview(db, { card_id: next.card.id, rating: 4 }, T0);
-    }
-    expect(visited).toHaveLength(12);
+    // Media cards are never skipped, and Good on everything eventually learns the whole deck.
+    await study("demo-spanish", 100);
+    expect(await deck("demo-spanish")).toMatchObject({ learning: 0, new: 0, learned: 12 });
   });
 });
 
@@ -340,41 +272,26 @@ describe("sub-decks", () => {
 
   it("a parent's counts include its sub-decks", async () => {
     await importCards(db, nested(3));
-    await applyReview(db, { card_id: "lang:a:00", rating: 1 }, at(-HOUR));
-    await applyReview(db, { card_id: "lang:b:00", rating: 1 }, at(-HOUR));
-    const byId = Object.fromEntries((await listDecks(db, T0)).map((d) => [d.id, d]));
-    expect(byId["lang"]).toMatchObject({ parent: null, due: 2, unseen: 4 });
-    expect(byId["lang:a"]).toMatchObject({ parent: "lang", due: 1, unseen: 2 });
-    expect(byId["lang:b"]).toMatchObject({ parent: "lang", due: 1, unseen: 2 });
+    await again("lang:a:00");
+    await again("lang:b:00");
+    const byId = Object.fromEntries((await listDecks(db)).map((d) => [d.id, d]));
+    expect(byId["lang"]).toMatchObject({ parent: null, learning: 2, new: 4, total: 6 });
+    expect(byId["lang:a"]).toMatchObject({ parent: "lang", learning: 1, new: 2, total: 3 });
+    expect(byId["lang:b"]).toMatchObject({ parent: "lang", learning: 1, new: 2, total: 3 });
   });
 
   it("studying a parent draws from all sub-decks; a sub-deck only from itself", async () => {
     await importCards(db, nested(2));
-    const seenFromParent = new Set<string>();
+    const fromParent = new Set<string>();
     for (;;) {
-      const next = await nextCard(db, "lang", {}, T0);
-      if (!next.card || next.source !== "new") break;
-      seenFromParent.add(next.card.deck);
-      await applyReview(db, { card_id: next.card.id, rating: 4 }, T0);
+      const n = await next("lang");
+      if (!n.card || n.source !== "new") break;
+      fromParent.add(n.card.deck);
+      await good(n.card.id);
     }
-    expect(seenFromParent).toEqual(new Set(["lang:a", "lang:b"]));
+    expect(fromParent).toEqual(new Set(["lang:a", "lang:b"]));
 
     await importCards(db, nested(4));
-    const fromB = await nextCard(db, "lang:b", {}, T0);
-    expect(fromB.card!.deck).toBe("lang:b");
-  });
-
-  it("the daily new-card limit is shared across a parent's sub-decks", async () => {
-    await importCards(db, nested(5));
-    await updateSettings(db, { daily_new_limit: 3 });
-    await applyReview(db, { card_id: "lang:a:00", rating: 4 }, T0);
-    await applyReview(db, { card_id: "lang:a:01", rating: 4 }, T0);
-    const byId = Object.fromEntries((await listDecks(db, T0)).map((d) => [d.id, d]));
-    // 2 of the 3 shared new cards are used, so 1 is left everywhere in the group.
-    expect([byId["lang"].new, byId["lang:a"].new, byId["lang:b"].new]).toEqual([1, 1, 1]);
-
-    await applyReview(db, { card_id: "lang:b:00", rating: 4 }, T0);
-    expect((await nextCard(db, "lang:b", {}, T0)).card).toBeNull();
-    expect((await nextCard(db, "lang", {}, T0)).card).toBeNull();
+    expect((await next("lang:b")).card!.deck).toBe("lang:b");
   });
 });

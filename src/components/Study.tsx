@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { NextResult } from "@/lib/queue";
 import BackLink from "./BackLink";
 import { cardExtras } from "@/lib/card-extras";
-import { formatInterval } from "@/lib/format";
 import Markdown from "./Markdown";
 import { MediaList } from "./Media";
 
@@ -15,12 +14,9 @@ type Counts = NextResult["counts"];
 /** Text longer than this reads better left-aligned at body size than as a big centred word. */
 const LONG_TEXT = 80;
 
-const RATINGS = [
-  { value: 1, label: "Again", cls: "again" },
-  { value: 2, label: "Hard", cls: "hard" },
-  { value: 3, label: "Good", cls: "good" },
-  { value: 4, label: "Easy", cls: "easy" },
-] as const;
+type Answer = "again" | "good";
+
+const cardsLater = (n: number) => `${n} card${n === 1 ? "" : "s"} later`;
 
 async function json<T>(res: Response): Promise<T> {
   const body = await res.json().catch(() => ({}));
@@ -93,7 +89,7 @@ export default function Study({ deckId, category, season }: Props) {
   }, [cardId, view, fetchNext]);
 
   const answer = useCallback(
-    async (body: { rating: number } | { action: "add_to_review" }) => {
+    async (choice: Answer) => {
       if (!card || busy) return;
       setError(null);
 
@@ -104,7 +100,7 @@ export default function Study({ deckId, category, season }: Props) {
             await fetch("/api/review", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ card_id: card.id, ...body }),
+              body: JSON.stringify({ card_id: card.id, answer: choice }),
             }),
           ),
         );
@@ -151,15 +147,19 @@ export default function Study({ deckId, category, season }: Props) {
       if (!revealed && (e.key === " " || e.key === "Enter")) {
         e.preventDefault();
         setRevealed(true);
-      } else if (revealed && ["1", "2", "3", "4"].includes(e.key)) {
-        void answer({ rating: Number(e.key) });
+      } else if (revealed && e.key === "1") {
+        void answer("again");
+      } else if (revealed && (e.key === "2" || e.key === " " || e.key === "Enter")) {
+        e.preventDefault();
+        void answer("good");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [busy, card, revealed, answer]);
 
-  const browse = data?.deck.kind === "browse" && card && !card.inReviewQueue;
+  const browse = data?.deck.kind === "browse" && card && !card.learning;
+  const outcomes = data?.outcomes;
   const extras = cardExtras(card?.meta);
 
   return (
@@ -167,11 +167,9 @@ export default function Study({ deckId, category, season }: Props) {
       <header>
         <BackLink />
         {data && (
-          <span className="counts" aria-label="due and new">
-            <span className="chip count-due" title="due">{data.counts.due}</span>
-            <span className="chip count-new" title={data.deck.kind === "srs" ? "new today" : "unseen"}>
-              {data.counts.new}
-            </span>
+          <span className="counts" aria-label="learning and new">
+            <span className="chip count-due" title="learning">{data.counts.learning}</span>
+            <span className="chip count-new" title="new">{data.counts.new}</span>
           </span>
         )}
       </header>
@@ -185,7 +183,10 @@ export default function Study({ deckId, category, season }: Props) {
       )}
       {data && !card && (
         <p className="muted">
-          Nothing left in {data.deck.name} right now. <Link href="/">Back to decks</Link>
+          {data.counts.total > 0 && data.counts.learned === data.counts.total
+            ? `You've learned every card in ${data.deck.name}.`
+            : `Nothing left in ${data.deck.name}.`}{" "}
+          <Link href="/">Back to decks</Link>
         </p>
       )}
 
@@ -198,6 +199,13 @@ export default function Study({ deckId, category, season }: Props) {
             aria-label={revealed ? "Card" : "Reveal answer"}
             onClick={() => setRevealed(true)}
           >
+            {outcomes && card.learning && (
+              <span className="streak" aria-label={`${outcomes.streak} of ${outcomes.learnedAfter} in a row`}>
+                {Array.from({ length: outcomes.learnedAfter }, (_, i) => (
+                  <span key={i} className={i < outcomes.streak ? "dot on" : "dot"} />
+                ))}
+              </span>
+            )}
             <MediaList key={`f-${view}`} media={card.media} side="front" />
             <Markdown className={`card-text md${card.front.length > LONG_TEXT ? " long" : ""}`} text={card.front} />
             {card.tags.length > 0 && <p className="muted card-tags">{card.tags.join(" · ")}</p>}
@@ -232,27 +240,20 @@ export default function Study({ deckId, category, season }: Props) {
             <button className="reveal" onClick={() => setRevealed(true)} disabled={busy}>
               Show answer
             </button>
-          ) : browse ? (
-            <div className="actions three">
-              <button className="again" disabled={busy} onClick={() => answer({ rating: 1 })}>
-                Again
-                {data?.intervals && <span className="interval">{formatInterval(data.intervals[1])}</span>}
-              </button>
-              <button className="hard" disabled={busy} onClick={() => answer({ action: "add_to_review" })}>
-                Add to review
-              </button>
-              <button className="good" disabled={busy} onClick={() => answer({ rating: 3 })}>
-                Next
-              </button>
-            </div>
           ) : (
-            <div className="actions">
-              {RATINGS.map((r) => (
-                <button key={r.value} className={r.cls} disabled={busy} onClick={() => answer({ rating: r.value })}>
-                  {r.label}
-                  {data?.intervals && <span className="interval">{formatInterval(data.intervals[r.value])}</span>}
-                </button>
-              ))}
+            <div className="actions two">
+              <button className="again" disabled={busy} onClick={() => answer("again")}>
+                Again
+                {outcomes && <span className="interval">{cardsLater(outcomes.again)}</span>}
+              </button>
+              <button className="good" disabled={busy} onClick={() => answer("good")}>
+                {browse ? "Next" : "Good"}
+                {outcomes && !browse && (
+                  <span className="interval">
+                    {outcomes.good === "learned" ? "Learned ✓" : cardsLater(outcomes.good)}
+                  </span>
+                )}
+              </button>
             </div>
           )}
         </>

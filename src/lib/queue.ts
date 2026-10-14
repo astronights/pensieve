@@ -1,13 +1,9 @@
-import { and, asc, eq, lte, ne, or, type SQL, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, lte, ne, type SQL, sql } from "drizzle-orm";
 import type { DB } from "@/db";
 import { cards, cardState, decks, type DeckKind, type MediaItem } from "@/db/schema";
 import { clientMeta } from "./card-extras";
-import { previewIntervals } from "./fsrs";
 import { notFound } from "./errors";
-import { getSettings } from "./settings";
-
-/** If nothing else is left, learning cards due within this window are shown early (like Anki). */
-export const LEARN_AHEAD_MS = 20 * 60 * 1000;
+import { getSettings, goodGap } from "./settings";
 
 export type DeckSummary = {
   id: string;
@@ -15,13 +11,16 @@ export type DeckSummary = {
   kind: DeckKind;
   /** Parent deck id for a sub-deck; null for a top-level deck. */
   parent: string | null;
-  /** Cards in FSRS whose due time has passed (a parent includes its sub-decks). */
-  due: number;
-  /** SRS: new cards still available today (capped). Browse: unseen cards. */
+  /** Cards being learned: answered but not yet learned (a parent includes its sub-decks). */
+  learning: number;
+  /** Cards never seen. */
   new: number;
-  /** Cards never seen or reviewed, ignoring the daily cap. */
-  unseen: number;
+  /** Cards answered Good enough times in a row; they aren't shown again. */
+  learned: number;
+  total: number;
 };
+
+export type Counts = Pick<DeckSummary, "learning" | "new" | "learned" | "total">;
 
 export type CardDTO = {
   id: string;
@@ -32,18 +31,21 @@ export type CardDTO = {
   category: string | null;
   media: MediaItem[];
   meta: Record<string, unknown> | null;
-  state: (typeof cardState.$inferSelect)["state"] | null;
-  inReviewQueue: boolean;
+  /** Goods in a row so far. */
+  streak: number;
+  /** In the Again/Good loop (a browse-deck card only joins it on Again). */
+  learning: boolean;
   bookmarked: boolean;
 };
 
 export type NextResult = {
   deck: { id: string; name: string; kind: DeckKind };
   card: CardDTO | null;
-  source: "due" | "learn_ahead" | "new" | "unseen" | null;
-  counts: { due: number; new: number; unseen: number };
-  /** Time until due again for each rating 1–4 (ms), for labelling the answer buttons. */
-  intervals?: Record<1 | 2 | 3 | 4, number>;
+  /** due: its turn came up; new: never seen; ahead: nothing else left, so shown early. */
+  source: "due" | "new" | "ahead" | null;
+  counts: Counts;
+  /** What each answer does: how many cards later it returns, or "learned" for the final Good. */
+  outcomes?: { again: number; good: number | "learned"; streak: number; learnedAfter: number };
 };
 
 export type NextFilters = {
@@ -56,77 +58,57 @@ export type NextFilters = {
   exclude?: string | null;
 };
 
-const ts = (d: Date) => sql`${d.toISOString()}::timestamptz`;
+/** The answer counter: every answer appends a review_log row, so its latest id counts answers. */
+const position = sql.raw(`(select coalesce(max("id"), 0) from "review_log")`);
 
-/** Local midnight in `tz` for the day containing `now`, as a timestamptz expression. */
-const dayStart = (now: Date, tz: string) =>
-  sql`(date_trunc('day', ${ts(now)} at time zone ${tz}) at time zone ${tz})`;
-
-/**
- * FSRS-managed: SRS-deck cards reviewed at least once, plus any card explicitly put in the review queue.
- * Written with qualified names so it is safe inside correlated subqueries; needs `decks` and `card_state` in scope.
- */
-const inFsrs = sql.raw(
-  `(("decks"."kind" = 'srs' and "card_state"."reps" > 0) or "card_state"."in_review_queue")`,
-);
-
-/**
- * Never reviewed or seen. A card_state row can exist without the card being seen
- * (e.g. it was only bookmarked), so this checks more than row existence.
- */
+/** Never seen. A card_state row can exist without that (e.g. the card was only bookmarked). */
 const unseen = sql.raw(
-  `("card_state"."card_id" is null or ("card_state"."reps" = 0 and "card_state"."last_review" is null and not "card_state"."in_review_queue"))`,
+  `("card_state"."card_id" is null or ("card_state"."seen_at" is null and "card_state"."due_at" is null and "card_state"."learned_at" is null))`,
 );
 
-/** Cards of the outer `decks` row, including its sub-decks' cards (a sub-deck has none of its own). */
+/** Cards of the outer `decks` row, including its sub-decks' cards. */
 const inDeckScope = sql.raw(
   `"cards"."deck" in (select "s"."id" from "decks" "s" where "s"."id" = "decks"."id" or "s"."parent" = "decks"."id")`,
-);
-
-/** Cards of the outer deck's whole top-level group: the daily new-card limit is shared across it. */
-const inDeckGroup = sql.raw(
-  `"cards"."deck" in (select "g"."id" from "decks" "g" where coalesce("g"."parent", "g"."id") = coalesce("decks"."parent", "decks"."id"))`,
 );
 
 /** Cards in deck `deckId` or one of its sub-decks. */
 const deckScope = (deckId: string) =>
   sql`${cards.deck} in (select "s"."id" from "decks" "s" where "s"."id" = ${deckId} or "s"."parent" = ${deckId})`;
 
-export async function listDecks(db: DB, now = new Date(), deckId?: string): Promise<DeckSummary[]> {
-  const { daily_new_limit, timezone } = await getSettings(db);
-  const rows = await db
+const countWhere = (cond: string) =>
+  sql<number>`(
+    select count(*) from "cards"
+    left join "card_state" on "card_state"."card_id" = "cards"."id"
+    where ${inDeckScope} and ${sql.raw(cond)}
+  )`.mapWith(Number);
+
+export async function listDecks(db: DB, deckId?: string): Promise<DeckSummary[]> {
+  return db
     .select({
       id: decks.id,
       name: decks.name,
       kind: decks.kind,
       parent: decks.parent,
-      due: sql<number>`(
-        select count(*) from "cards"
-        join "card_state" on "card_state"."card_id" = "cards"."id"
-        where ${inDeckScope} and "card_state"."due" <= ${ts(now)} and ${inFsrs}
-      )`.mapWith(Number),
-      unseen: sql<number>`(
+      learning: countWhere(`"card_state"."due_at" is not null`),
+      new: sql<number>`(
         select count(*) from "cards"
         left join "card_state" on "card_state"."card_id" = "cards"."id"
         where ${inDeckScope} and ${unseen}
       )`.mapWith(Number),
-      newToday: sql<number>`(
-        select count(*) from "review_log"
-        join "cards" on "cards"."id" = "review_log"."card_id"
-        where ${inDeckGroup}
-          and "review_log"."state_before" = 'new'
-          and "review_log"."reviewed_at" >= ${dayStart(now, timezone)}
-      )`.mapWith(Number),
+      learned: countWhere(`"card_state"."learned_at" is not null`),
+      total: countWhere("true"),
     })
     .from(decks)
     .where(deckId ? eq(decks.id, deckId) : undefined)
     .orderBy(asc(decks.name));
-
-  return rows.map(({ newToday, ...d }) => ({
-    ...d,
-    new: d.kind === "srs" ? Math.min(d.unseen, Math.max(0, daily_new_limit - newToday)) : d.unseen,
-  }));
 }
+
+export const toCounts = ({ learning, new: fresh, learned, total }: DeckSummary): Counts => ({
+  learning,
+  new: fresh,
+  learned,
+  total,
+});
 
 function filterConditions(f: NextFilters): SQL[] {
   const out: SQL[] = [];
@@ -145,89 +127,63 @@ const cardColumns = {
   category: cards.category,
   media: cards.media,
   meta: cards.meta,
-  state: cardState.state,
-  inReviewQueue: cardState.inReviewQueue,
+  streak: cardState.streak,
+  dueAt: cardState.dueAt,
   bookmarked: cardState.bookmarked,
 };
 
-type CardRow = {
-  [K in keyof typeof cardColumns]: K extends "state" | "inReviewQueue" | "bookmarked"
-    ? CardDTO[K] | null
-    : CardDTO[K];
+type CardRow = Omit<CardDTO, "streak" | "learning" | "bookmarked"> & {
+  streak: number | null;
+  dueAt: number | null;
+  bookmarked: boolean | null;
 };
 
-const toDTO = (r: CardRow): CardDTO => ({
+const toDTO = ({ dueAt, ...r }: CardRow): CardDTO => ({
   ...r,
   meta: clientMeta(r.meta),
   media: r.media ?? [],
-  inReviewQueue: r.inReviewQueue ?? false,
+  streak: r.streak ?? 0,
+  learning: dueAt !== null,
   bookmarked: r.bookmarked ?? false,
 });
 
 /**
- * Picks the next card to show.
- * - Both deck kinds: FSRS cards that are due come first (oldest due first).
- * - SRS decks: then new cards in import order, up to the daily cap; then learning cards due soon.
- * - Browse decks: then a random unseen card.
+ * Picks the next card to show. There is no daily limit; cards are placed by how many answers
+ * ago they were answered, not by time.
+ * 1. A card being learned whose turn has come (Again/Good moved it N cards back), earliest first.
+ * 2. Otherwise a new card: import order (SRS decks) or random (browse decks).
+ * 3. Otherwise the card being learned that is next in line, shown early.
+ * Learned cards are never shown.
  */
-export async function nextCard(
-  db: DB,
-  deckId: string,
-  filters: NextFilters = {},
-  now = new Date(),
-): Promise<NextResult> {
-  const result = await pickNext(db, deckId, filters, now);
-  if (!result.card) return result;
-  const [state] = await db.select().from(cardState).where(eq(cardState.cardId, result.card.id)).limit(1);
-  const { desired_retention } = await getSettings(db);
-  return { ...result, intervals: previewIntervals(state, now, desired_retention) };
-}
-
-async function pickNext(db: DB, deckId: string, filters: NextFilters, now: Date): Promise<NextResult> {
-  const [summary] = await listDecks(db, now, deckId);
+export async function nextCard(db: DB, deckId: string, filters: NextFilters = {}): Promise<NextResult> {
+  const [summary] = await listDecks(db, deckId);
   if (!summary) throw notFound(`Deck not found: ${deckId}`);
   const deck = { id: summary.id, name: summary.name, kind: summary.kind };
-  const counts = { due: summary.due, new: summary.new, unseen: summary.unseen };
+  const counts = toCounts(summary);
   const extra = filterConditions(filters);
 
-  const fsrsCard = async (until: Date, learningOnly: boolean) => {
+  const learningCard = async (dueOnly: boolean) => {
     const [row] = await db
       .select(cardColumns)
       .from(cards)
       .innerJoin(cardState, eq(cardState.cardId, cards.id))
-      .innerJoin(decks, eq(decks.id, cards.deck))
       .where(
         and(
           deckScope(deckId),
-          lte(cardState.due, until),
-          inFsrs,
-          learningOnly
-            ? or(eq(cardState.state, "learning"), eq(cardState.state, "relearning"))
-            : undefined,
+          isNotNull(cardState.dueAt),
+          dueOnly ? lte(cardState.dueAt, position) : undefined,
           ...extra,
         ),
       )
-      .orderBy(asc(cardState.due), asc(cards.id))
+      .orderBy(asc(cardState.dueAt), asc(cards.id))
       .limit(1);
     return row;
   };
 
-  const due = await fsrsCard(now, false);
-  if (due) return { deck, card: toDTO(due), source: "due", counts };
+  const pick = async (): Promise<Pick<NextResult, "card" | "source">> => {
+    const due = await learningCard(true);
+    if (due) return { card: toDTO(due), source: "due" };
 
-  let newAvailable = deck.kind === "srs" ? counts.new : counts.unseen;
-  if (filters.exclude && deck.kind === "srs" && newAvailable === 1) {
-    // The excluded card may be the last new card allowed today (its answer isn't saved yet).
-    const [excludedIsNew] = await db
-      .select({ id: cards.id })
-      .from(cards)
-      .leftJoin(cardState, eq(cardState.cardId, cards.id))
-      .where(and(eq(cards.id, filters.exclude), deckScope(deckId), unseen))
-      .limit(1);
-    if (excludedIsNew) newAvailable = 0;
-  }
-
-  if (newAvailable > 0) {
     const [fresh] = await db
       .select(cardColumns)
       .from(cards)
@@ -235,13 +191,28 @@ async function pickNext(db: DB, deckId: string, filters: NextFilters, now: Date)
       .where(and(deckScope(deckId), unseen, ...extra))
       .orderBy(...(deck.kind === "srs" ? [asc(cards.createdAt), asc(cards.id)] : [sql`random()`]))
       .limit(1);
-    if (fresh) {
-      return { deck, card: toDTO(fresh), source: deck.kind === "srs" ? "new" : "unseen", counts };
-    }
-  }
+    if (fresh) return { card: toDTO(fresh), source: "new" };
 
-  const ahead = await fsrsCard(new Date(now.getTime() + LEARN_AHEAD_MS), true);
-  if (ahead) return { deck, card: toDTO(ahead), source: "learn_ahead", counts };
+    const ahead = await learningCard(false);
+    if (ahead) return { card: toDTO(ahead), source: "ahead" };
+    return { card: null, source: null };
+  };
 
-  return { deck, card: null, source: null, counts };
+  const { card, source } = await pick();
+  if (!card) return { deck, card, source, counts };
+
+  const settings = await getSettings(db);
+  const streak = card.streak + 1;
+  return {
+    deck,
+    card,
+    source,
+    counts,
+    outcomes: {
+      again: settings.again_gap,
+      good: streak >= settings.learned_after ? "learned" : goodGap(settings, streak),
+      streak: card.streak,
+      learnedAfter: settings.learned_after,
+    },
+  };
 }
