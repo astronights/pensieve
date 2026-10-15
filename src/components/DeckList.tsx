@@ -12,22 +12,25 @@ function Counts({ deck }: { deck: DeckSummary }) {
   }
   return (
     <span className="counts">
-      <span className={`pill due${deck.learning ? "" : " zero"}`} title="learning">
+      <span className={`pill learned${deck.learned ? "" : " zero"}`} title="learned">
+        {deck.learned}
+      </span>
+      <span className={`pill learning${deck.learning ? "" : " zero"}`} title="in progress">
         {deck.learning}
       </span>
-      <span className={`pill new${deck.new ? "" : " zero"}`} title="new">
+      <span className={`pill unseen${deck.new ? "" : " zero"}`} title="unseen">
         {deck.new}
       </span>
     </span>
   );
 }
 
-/** "3 decks · 120/576 learned" */
-function subtitle(deck: DeckSummary, subDecks: number): string | null {
+/** "3 decks · 576 cards" */
+function subtitle(deck: DeckSummary, subDecks: number): string {
   const parts = [];
   if (subDecks > 0) parts.push(`${subDecks} deck${subDecks === 1 ? "" : "s"}`);
-  if (deck.learned > 0) parts.push(`${deck.learned}/${deck.total} learned`);
-  return parts.length > 0 ? parts.join(" · ") : null;
+  parts.push(`${deck.total} card${deck.total === 1 ? "" : "s"}`);
+  return parts.join(" · ");
 }
 
 const studyHref = (id: string) => `/study/${encodeURIComponent(id)}`;
@@ -65,59 +68,71 @@ export default function DeckList({ decks }: { decks: DeckSummary[] }) {
   }
 
   return (
-    <ul className="deck-list">
-      {decks
-        .filter((d) => !d.parent)
-        .map((deck) => {
-          const subs = children.get(deck.id) ?? [];
-          const open = subs.length > 0 && expanded.has(deck.id);
-          return (
-            <li key={deck.id} className={`deck-card${open ? " open" : ""}`}>
-              <div className="deck-head">
-                <Link href={studyHref(deck.id)} className="deck-main">
-                  <span className="deck-title">
-                    <span className="deck-name">
-                      {deck.name}
-                      {deck.kind === "browse" && <span className="tag">Browse</span>}
-                    </span>
-                    {subtitle(deck, subs.length) && (
+    <>
+      <ul className="deck-list">
+        {decks
+          .filter((d) => !d.parent)
+          .map((deck) => {
+            const subs = children.get(deck.id) ?? [];
+            const open = subs.length > 0 && expanded.has(deck.id);
+            return (
+              <li key={deck.id} className={`deck-card${open ? " open" : ""}`}>
+                <div className="deck-head">
+                  <Link href={studyHref(deck.id)} className="deck-main">
+                    <span className="deck-title">
+                      <span className="deck-name">
+                        {deck.name}
+                        {deck.kind === "browse" && <span className="tag">Browse</span>}
+                      </span>
                       <span className="deck-sub muted">{subtitle(deck, subs.length)}</span>
-                    )}
-                  </span>
-                  <Counts deck={deck} />
-                </Link>
-                {subs.length > 0 && (
-                  <button
-                    type="button"
-                    className="deck-toggle"
-                    aria-expanded={open}
-                    aria-label={`${open ? "Hide" : "Show"} decks in ${deck.name}`}
-                    onClick={() => toggle(deck.id)}
-                  >
-                    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                      <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
+                    </span>
+                    <Counts deck={deck} />
+                  </Link>
+                  {subs.length > 0 && (
+                    <button
+                      type="button"
+                      className="deck-toggle"
+                      aria-expanded={open}
+                      aria-label={`${open ? "Hide" : "Show"} decks in ${deck.name}`}
+                      onClick={() => toggle(deck.id)}
+                    >
+                      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                        <path
+                          d="M6 9l6 6 6-6"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.25"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                {open && (
+                  <ul className="deck-children">
+                    {subs.map((sub) => (
+                      <li key={sub.id}>
+                        <Link href={studyHref(sub.id)} className="deck-child">
+                          <span className="deck-title">
+                            <span className="deck-name">{sub.name}</span>
+                            <span className="deck-sub muted">{subtitle(sub, 0)}</span>
+                          </span>
+                          <Counts deck={sub} />
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
                 )}
-              </div>
-              {open && (
-                <ul className="deck-children">
-                  {subs.map((sub) => (
-                    <li key={sub.id}>
-                      <Link href={studyHref(sub.id)} className="deck-child">
-                        <span className="deck-title">
-                          <span className="deck-name">{sub.name}</span>
-                          {subtitle(sub, 0) && <span className="deck-sub muted">{subtitle(sub, 0)}</span>}
-                        </span>
-                        <Counts deck={sub} />
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          );
-        })}
-    </ul>
+              </li>
+            );
+          })}
+      </ul>
+      <p className="legend muted">
+        <span className="legend-item learned">learned</span>
+        <span className="legend-item learning">in progress</span>
+        <span className="legend-item unseen">unseen</span>
+      </p>
+    </>
   );
 }

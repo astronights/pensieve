@@ -85,8 +85,11 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 .deck-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.75rem; }
 .counts { display: flex; gap: 0.4rem; align-items: center; font-variant-numeric: tabular-nums; }
-.count-due { color: var(--good); }
-.count-new { color: var(--easy); }
+/* Card counts: green = learned, blue = in progress, red = unseen */
+.chip.learned, .pill.learned, .legend-item.learned { --tone: var(--good); }
+.chip.learning, .pill.learning, .legend-item.learning { --tone: var(--easy); }
+.chip.unseen, .pill.unseen, .legend-item.unseen { --tone: var(--again); }
+.chip.learned, .chip.learning, .chip.unseen { color: var(--tone); }
 
 .card {
   flex: 1;
@@ -333,10 +336,9 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
-.pill.due { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); }
-.pill.new { color: var(--easy); background: color-mix(in srgb, var(--easy) 14%, transparent); }
+.pill { color: var(--tone); background: color-mix(in srgb, var(--tone) 14%, transparent); }
 .pill.zero { color: var(--muted); background: transparent; }
-.pill.done { color: var(--good); background: color-mix(in srgb, var(--good) 14%, transparent); white-space: nowrap; }
+.pill.done { --tone: var(--good); white-space: nowrap; }
 
 /* What each answer does, under the button */
 .actions button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.1rem; line-height: 1.1; }
@@ -346,3 +348,7 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .streak { display: inline-flex; gap: 0.35rem; }
 .streak .dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; border: 1.5px solid var(--good); }
 .streak .dot.on { background: var(--good); }
+
+.legend { display: flex; justify-content: center; gap: 1rem; margin: 0; font-size: 0.8rem; }
+.legend-item { display: inline-flex; align-items: center; gap: 0.35rem; }
+.legend-item::before { content: ""; width: 0.55rem; height: 0.55rem; border-radius: 999px; background: var(--tone); }
