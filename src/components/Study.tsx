@@ -167,9 +167,10 @@ export default function Study({ deckId, category, season }: Props) {
       <header>
         <BackLink />
         {data && (
-          <span className="counts" aria-label="learning and new">
-            <span className="chip count-due" title="learning">{data.counts.learning}</span>
-            <span className="chip count-new" title="new">{data.counts.new}</span>
+          <span className="counts" aria-label="learned, in progress and unseen">
+            <span className="chip learned" title="learned">{data.counts.learned}</span>
+            <span className="chip learning" title="in progress">{data.counts.learning}</span>
+            <span className="chip unseen" title="unseen">{data.counts.new}</span>
           </span>
         )}
       </header>
