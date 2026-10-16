@@ -27,6 +27,9 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Everything except Next's static assets and the favicon.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Everything except Next's static assets and the app icons and manifest, which the browser
+  // fetches without the session cookie when installing the app.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icon.svg|icon-192.png|icon-512.png|icon-maskable-512.png|apple-touch-icon.png).*)",
+  ],
 };

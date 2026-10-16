@@ -7,6 +7,11 @@ export const metadata: Metadata = {
   title: "Pensieve",
   description: "Flashcards",
   robots: { index: false, follow: false },
+  icons: {
+    icon: [{ url: "/favicon.ico", sizes: "any" }, { url: "/icon.svg", type: "image/svg+xml" }],
+    apple: "/apple-touch-icon.png",
+  },
+  appleWebApp: { capable: true, title: "Pensieve", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {

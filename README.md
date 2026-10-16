@@ -43,6 +43,13 @@ Migration `0003_remove_demo` deleted the demo decks from existing databases. If 
 
 The app connects with node-postgres (`pg`) everywhere: Neon, local Postgres and CI use the same driver.
 
+## Install on a phone
+
+Pensieve is an installable web app (PWA). On Android, open it in Chrome and tap **Install app** in
+Settings, or use Chrome's **⋮ → Add to Home screen**. It then opens full screen from its own icon and
+stays logged in (the session lasts a year). The manifest (`src/app/manifest.ts`) and icons
+(`public/`, drawn from `public/icon.svg`) are served without the passcode so the browser can read them.
+
 ## API
 
 Every route requires the session cookie or `Authorization: Bearer $APP_PASSCODE`, except `/login` and `/api/login`.
