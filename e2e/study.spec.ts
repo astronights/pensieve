@@ -181,3 +181,63 @@ test("Markdown, notes, explanation and info show only after the reveal", async (
   const next = await (await context.request.get("/api/next?deck=e2e-md")).json();
   expect(next.card.meta.raw).toBeUndefined();
 });
+
+test("studying a parent deck keeps its own counts after an answer", async ({ page, context }) => {
+  const auth = { Authorization: `Bearer ${PASSCODE}` };
+  const cards = ["a", "b"].flatMap((sub) =>
+    [1, 2, 3].map((i) => ({
+      id: `e2e-nest:${sub}${i}`,
+      deck: `e2e-nest:${sub}`,
+      front: `${sub}${i}?`,
+      back: `${sub}${i}`,
+    })),
+  );
+  const res = await context.request.post("/api/import", {
+    headers: auth,
+    data: {
+      decks: [
+        { id: "e2e-nest", name: "Nested", kind: "srs" },
+        { id: "e2e-nest:a", name: "A", parent: "e2e-nest" },
+        { id: "e2e-nest:b", name: "B", parent: "e2e-nest" },
+      ],
+      cards,
+    },
+  });
+  expect(res.ok()).toBeTruthy();
+
+  await context.request.post("/api/login", { data: { passcode: PASSCODE } });
+  await page.goto("/study/e2e-nest");
+  const counts = page.locator("header .counts .chip");
+  await expect(counts).toHaveText(["0", "0", "6"]);
+
+  await page.getByRole("button", { name: "Show answer" }).click();
+  const saved = page.waitForResponse((r) => r.url().endsWith("/api/review") && r.ok());
+  await page.getByRole("button", { name: /^Good/ }).click();
+  await saved;
+  // Counts are for the whole parent deck (6 cards), not the answered card's sub-deck (3).
+  await expect(counts).toHaveText(["0", "1", "5"]);
+});
+
+test("installable: the manifest and icons are public and Chrome reports no install blockers", async ({
+  page,
+  request,
+}) => {
+  const manifest = await request.get("/manifest.webmanifest");
+  expect(manifest.ok()).toBeTruthy();
+  const body = await manifest.json();
+  expect(body).toMatchObject({ name: "Pensieve", display: "standalone", start_url: "/" });
+  for (const icon of body.icons) {
+    const res = await request.get(icon.src);
+    expect(res.ok(), icon.src).toBeTruthy();
+  }
+
+  await page.goto("/login");
+  const cdp = await page.context().newCDPSession(page);
+  // Chrome fetches the manifest and icons itself; give it a moment. Test browsers are always
+  // incognito, which blocks installing anything, so that one is expected here.
+  const errors = async () =>
+    (await cdp.send("Page.getInstallabilityErrors")).installabilityErrors
+      .map((e) => e.errorId)
+      .filter((id) => id !== "in-incognito");
+  await expect.poll(errors).toEqual([]);
+});

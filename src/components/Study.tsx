@@ -100,7 +100,7 @@ export default function Study({ deckId, category, season }: Props) {
             await fetch("/api/review", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ card_id: card.id, answer: choice }),
+              body: JSON.stringify({ card_id: card.id, answer: choice, deck: deckId }),
             }),
           ),
         );
@@ -138,7 +138,7 @@ export default function Study({ deckId, category, season }: Props) {
         setBusy(false);
       }
     },
-    [busy, card, fetchNext, show],
+    [busy, card, deckId, fetchNext, show],
   );
 
   useEffect(() => {

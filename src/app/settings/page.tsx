@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import BackLink from "@/components/BackLink";
+import InstallApp from "@/components/InstallApp";
 import SettingsForm from "@/components/SettingsForm";
 import ThemePicker from "@/components/ThemePicker";
 import { getDb } from "@/db";
@@ -16,6 +17,7 @@ export default async function SettingsPage() {
       <h1>Settings</h1>
       <ThemePicker initial={parseTheme(cookieStore.get(THEME_COOKIE)?.value)} />
       <SettingsForm initial={settings} />
+      <InstallApp />
     </main>
   );
 }
