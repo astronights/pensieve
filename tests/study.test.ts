@@ -145,13 +145,28 @@ describe("SRS decks", () => {
     expect(await good(id(0))).toMatchObject({ streak: 6, learned: true, due_at: null });
   });
 
-  it("missing a card during its review stage starts it over", async () => {
+  it("missing a card during its review stage keeps it in review; its review Goods restart", async () => {
     await importCards(db, srsDeck(1));
     await again(id(0));
-    for (let i = 0; i < 4; i++) await good(id(0));
-    expect(await again(id(0))).toMatchObject({ streak: 0, learned: false });
-    for (let i = 0; i < 5; i++) expect(await good(id(0))).toMatchObject({ learned: false });
+    for (let i = 0; i < 4; i++) await good(id(0)); // 3 learning Goods + 1 review Good
+    expect((await next("lang")).outcomes).toMatchObject({ again: 50, streak: 4 });
+    const missedReview = await again(id(0));
+    expect(missedReview).toMatchObject({ streak: 3, learned: false });
+    const [log] = await db.select({ id: reviewLog.id }).from(reviewLog).orderBy(desc(reviewLog.id)).limit(1);
+    expect(missedReview.due_at).toBe(log.id + 50);
+    // Still needs 3 review Goods in a row.
+    expect(await good(id(0))).toMatchObject({ streak: 4, learned: false });
+    expect(await good(id(0))).toMatchObject({ streak: 5, learned: false });
     expect(await good(id(0))).toMatchObject({ streak: 6, learned: true });
+  });
+
+  it("Again before the review stage starts a missed card over", async () => {
+    await importCards(db, srsDeck(1));
+    await again(id(0));
+    await good(id(0));
+    await good(id(0));
+    expect((await next("lang")).outcomes).toMatchObject({ again: 5 });
+    expect(await again(id(0))).toMatchObject({ streak: 0 });
   });
 
   it("logs every answer", async () => {

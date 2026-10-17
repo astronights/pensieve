@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db";
 import { type Answer, cards, cardState, decks, reviewLog } from "@/db/schema";
 import { badRequest, notFound } from "./errors";
-import { afterGood, getSettings } from "./settings";
+import { afterAgain, afterGood, getSettings } from "./settings";
 
 export type ReviewInput =
   | { card_id: string; answer: "again" | "good" }
@@ -48,7 +48,8 @@ const toResult = (s: typeof cardState.$inferSelect, deck: string): ReviewResult 
  * Again: the streak resets, the card is marked missed and it comes back `again_gap` cards later.
  * Good: the streak grows and the card comes back `good_gap` cards later (doubling each time);
  * at `learned_after` Goods in a row it is learned and leaves the queue. A card that was ever
- * missed first needs `learned_after` more Goods in a row, each `review_gap` cards apart.
+ * missed first needs `learned_after` more Goods in a row, each `review_gap` cards apart; Again
+ * during that review stage keeps it there (back after `review_gap`, review Goods restart).
  * A browse-deck card that isn't being learned only joins the loop on Again; Good ("Next") just
  * marks it seen.
  */
@@ -88,7 +89,8 @@ export async function applyReview(db: DB, input: ReviewInput, now = new Date()):
     if (seenOnly) {
       values = { seenAt: now };
     } else if (input.answer === "again") {
-      values = { seenAt: now, streak: 0, dueAt: log.id + settings.again_gap, learnedAt: null, missed: true };
+      const next = afterAgain(settings, existing?.streak ?? 0, existing?.missed ?? false);
+      values = { seenAt: now, streak: next.streak, dueAt: log.id + next.gap, learnedAt: null, missed: true };
     } else {
       const streak = (existing?.streak ?? 0) + 1;
       const next = afterGood(settings, streak, existing?.missed ?? false);

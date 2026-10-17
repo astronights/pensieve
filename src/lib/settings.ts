@@ -49,6 +49,21 @@ export function goodsNeeded(s: Settings, missed: boolean): number {
   return missed ? 2 * s.learned_after : s.learned_after;
 }
 
+/** A card in its review stage: missed once, then got the usual Goods in a row. */
+export function inReview(s: Settings, streak: number, missed: boolean): boolean {
+  return missed && streak >= s.learned_after;
+}
+
+/**
+ * What Again does: the card's new streak and how many cards later it comes back. In the review
+ * stage it stays there (back after `review_gap`, its review Goods restart); otherwise it starts over.
+ */
+export function afterAgain(s: Settings, streak: number, missed: boolean): { streak: number; gap: number } {
+  return inReview(s, streak, missed)
+    ? { streak: s.learned_after, gap: s.review_gap }
+    : { streak: 0, gap: s.again_gap };
+}
+
 /**
  * What a Good that brings the streak to `streak` does: "learned", or how many cards later the card
  * comes back. Learning Goods double the gap (15, 30, …); a missed card's extra review Goods are

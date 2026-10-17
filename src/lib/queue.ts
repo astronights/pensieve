@@ -3,7 +3,7 @@ import type { DB } from "@/db";
 import { cards, cardState, decks, type DeckKind, type MediaItem } from "@/db/schema";
 import { clientMeta } from "./card-extras";
 import { notFound } from "./errors";
-import { afterGood, getSettings, goodsNeeded } from "./settings";
+import { afterAgain, afterGood, getSettings, goodsNeeded } from "./settings";
 
 export type DeckSummary = {
   id: string;
@@ -216,7 +216,7 @@ export async function nextCard(db: DB, deckId: string, filters: NextFilters = {}
     source,
     counts,
     outcomes: {
-      again: settings.again_gap,
+      again: afterAgain(settings, card.streak, card.missed).gap,
       good: afterGood(settings, card.streak + 1, card.missed),
       streak: card.streak,
       needed: goodsNeeded(settings, card.missed),
