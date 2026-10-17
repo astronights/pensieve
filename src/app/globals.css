@@ -345,9 +345,11 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .interval { font-size: 0.75rem; font-weight: 500; color: var(--muted); }
 
 /* Goods in a row so far, at the top of a card being learned */
-.streak { display: inline-flex; gap: 0.35rem; }
-.streak .dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; border: 1.5px solid var(--good); }
-.streak .dot.on { background: var(--good); }
+.streak { display: inline-flex; gap: 0.75rem; }
+.streak .dots { display: inline-flex; gap: 0.35rem; }
+.streak .dot { --tone: var(--good); width: 0.5rem; height: 0.5rem; border-radius: 999px; border: 1.5px solid var(--tone); }
+.streak .dot.review { --tone: var(--easy); }
+.streak .dot.on { background: var(--tone); }
 
 .legend { display: flex; justify-content: center; gap: 1rem; margin: 0; font-size: 0.8rem; }
 .legend-item { display: inline-flex; align-items: center; gap: 0.35rem; }

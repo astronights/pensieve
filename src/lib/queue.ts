@@ -48,9 +48,10 @@ export type NextResult = {
   counts: Counts;
   /**
    * What each answer does: how many cards later it returns, or "learned" for the final Good.
-   * `needed` is how many Goods in a row this card needs in total (more once it has been missed).
+   * `needed` is how many Goods in a row this card needs in total (more once it has been missed);
+   * the first `learnedAfter` are learning Goods, any after that are review Goods.
    */
-  outcomes?: { again: number; good: number | "learned"; streak: number; needed: number };
+  outcomes?: { again: number; good: number | "learned"; streak: number; needed: number; learnedAfter: number };
 };
 
 export type NextFilters = {
@@ -225,6 +226,7 @@ export async function nextCard(db: DB, deckId: string, filters: NextFilters = {}
       good: afterGood(settings, card.streak + 1, card.missed),
       streak: card.streak,
       needed: goodsNeeded(settings, card.missed),
+      learnedAfter: settings.learned_after,
     },
   };
 }

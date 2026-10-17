@@ -18,6 +18,28 @@ type Answer = "again" | "good";
 
 const cardsLater = (n: number) => `${n} card${n === 1 ? "" : "s"} later`;
 
+/**
+ * Goods in a row so far: green dots for learning, then (for a card that was missed) blue dots for
+ * its review Goods, set a little apart.
+ */
+function Streak({ streak, needed, learnedAfter }: NonNullable<NextResult["outcomes"]>) {
+  const dots = (from: number, to: number, cls: string) =>
+    Array.from({ length: to - from }, (_, i) => (
+      <span key={from + i} className={`dot ${cls}${from + i < streak ? " on" : ""}`} />
+    ));
+  const reviewing = needed > learnedAfter;
+  const label =
+    reviewing && streak >= learnedAfter
+      ? `Review: ${streak - learnedAfter} of ${needed - learnedAfter} in a row`
+      : `${Math.min(streak, learnedAfter)} of ${learnedAfter} in a row`;
+  return (
+    <span className="streak" role="img" aria-label={label} title={label}>
+      <span className="dots">{dots(0, learnedAfter, "learn")}</span>
+      {reviewing && <span className="dots">{dots(learnedAfter, needed, "review")}</span>}
+    </span>
+  );
+}
+
 async function json<T>(res: Response): Promise<T> {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
@@ -168,9 +190,15 @@ export default function Study({ deckId, category, season }: Props) {
         <BackLink />
         {data && (
           <span className="counts" aria-label="learned, in progress and unseen">
-            <span className="chip learned" title="learned">{data.counts.learned}</span>
-            <span className="chip learning" title="in progress">{data.counts.learning}</span>
-            <span className="chip unseen" title="unseen">{data.counts.new}</span>
+            <span className="chip learned" title="learned">
+              {data.counts.learned}
+            </span>
+            <span className="chip learning" title="in progress">
+              {data.counts.learning}
+            </span>
+            <span className="chip unseen" title="unseen">
+              {data.counts.new}
+            </span>
           </span>
         )}
       </header>
@@ -200,20 +228,17 @@ export default function Study({ deckId, category, season }: Props) {
             aria-label={revealed ? "Card" : "Reveal answer"}
             onClick={() => setRevealed(true)}
           >
-            {outcomes && card.learning && (
-              <span className="streak" aria-label={`${outcomes.streak} of ${outcomes.needed} in a row`}>
-                {Array.from({ length: outcomes.needed }, (_, i) => (
-                  <span key={i} className={i < outcomes.streak ? "dot on" : "dot"} />
-                ))}
-              </span>
-            )}
+            {outcomes && !browse && <Streak {...outcomes} />}
             <MediaList key={`f-${view}`} media={card.media} side="front" />
             <Markdown className={`card-text md${card.front.length > LONG_TEXT ? " long" : ""}`} text={card.front} />
             {card.tags.length > 0 && <p className="muted card-tags">{card.tags.join(" · ")}</p>}
             {revealed && (
               <>
                 <hr ref={answerRef} />
-                <Markdown className={`card-text md answer${card.back.length > LONG_TEXT ? " long" : ""}`} text={card.back} />
+                <Markdown
+                  className={`card-text md answer${card.back.length > LONG_TEXT ? " long" : ""}`}
+                  text={card.back}
+                />
                 {extras.notes && <Markdown className="md notes" text={extras.notes} />}
                 {extras.explanation && <Markdown className="md explanation" text={extras.explanation} />}
                 <MediaList key={`b-${view}`} media={card.media} side="back" />
