@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import type { DB } from "@/db";
 import { type Answer, cards, cardState, decks, reviewLog } from "@/db/schema";
 import { badRequest, notFound } from "./errors";
-import { getSettings, goodGap } from "./settings";
+import { afterGood, getSettings } from "./settings";
 
 export type ReviewInput =
   | { card_id: string; answer: "again" | "good" }
@@ -30,6 +30,7 @@ export type ReviewResult = {
   /** The answer counter value at which the card comes back; null when it isn't being learned. */
   due_at: number | null;
   learned: boolean;
+  missed: boolean;
   bookmarked: boolean;
 };
 
@@ -39,13 +40,15 @@ const toResult = (s: typeof cardState.$inferSelect, deck: string): ReviewResult 
   streak: s.streak,
   due_at: s.dueAt,
   learned: s.learnedAt !== null,
+  missed: s.missed,
   bookmarked: s.bookmarked,
 });
 
 /**
- * Again: the streak resets and the card comes back `again_gap` cards later.
+ * Again: the streak resets, the card is marked missed and it comes back `again_gap` cards later.
  * Good: the streak grows and the card comes back `good_gap` cards later (doubling each time);
- * at `learned_after` Goods in a row it is learned and leaves the queue.
+ * at `learned_after` Goods in a row it is learned and leaves the queue. A card that was ever
+ * missed first needs `learned_after` more Goods in a row, each `review_gap` cards apart.
  * A browse-deck card that isn't being learned only joins the loop on Again; Good ("Next") just
  * marks it seen.
  */
@@ -85,13 +88,14 @@ export async function applyReview(db: DB, input: ReviewInput, now = new Date()):
     if (seenOnly) {
       values = { seenAt: now };
     } else if (input.answer === "again") {
-      values = { seenAt: now, streak: 0, dueAt: log.id + settings.again_gap, learnedAt: null };
+      values = { seenAt: now, streak: 0, dueAt: log.id + settings.again_gap, learnedAt: null, missed: true };
     } else {
       const streak = (existing?.streak ?? 0) + 1;
+      const next = afterGood(settings, streak, existing?.missed ?? false);
       values =
-        streak >= settings.learned_after
+        next === "learned"
           ? { seenAt: now, streak, dueAt: null, learnedAt: now }
-          : { seenAt: now, streak, dueAt: log.id + goodGap(settings, streak) };
+          : { seenAt: now, streak, dueAt: log.id + next };
     }
 
     const [saved] = await tx

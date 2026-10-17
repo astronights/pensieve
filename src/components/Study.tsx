@@ -201,8 +201,8 @@ export default function Study({ deckId, category, season }: Props) {
             onClick={() => setRevealed(true)}
           >
             {outcomes && card.learning && (
-              <span className="streak" aria-label={`${outcomes.streak} of ${outcomes.learnedAfter} in a row`}>
-                {Array.from({ length: outcomes.learnedAfter }, (_, i) => (
+              <span className="streak" aria-label={`${outcomes.streak} of ${outcomes.needed} in a row`}>
+                {Array.from({ length: outcomes.needed }, (_, i) => (
                   <span key={i} className={i < outcomes.streak ? "dot on" : "dot"} />
                 ))}
               </span>

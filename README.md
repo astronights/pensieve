@@ -9,6 +9,8 @@ Two answers, no daily limit:
 - **Again**: the card comes back after 5 other cards, and its count of Goods in a row resets to 0.
 - **Good**: the card comes back after 15 cards, then 30 (the gap doubles each time). The third Good
   in a row marks it **learned**, and it isn't shown again.
+- **Missed cards** (Again at any point) aren't learned yet after those 3 Goods: they come back every
+  50 cards and need 3 more Goods in a row first. Again during that review starts them over.
 
 Cards are placed by how many answers ago they came up, not by time, so you can study as many
 cards in a sitting as you like. Each turn shows the card being learned whose turn has come, else
@@ -62,7 +64,7 @@ Every route requires the session cookie or `Authorization: Bearer $APP_PASSCODE`
 | `POST /api/review` `{card_id, answer: "again" \| "good"}` | updates `card_state` and appends `review_log` (browse: Good on a card not being learned only marks it seen) |
 | `POST /api/review` `{card_id, action: "bookmark", value}` | bookmark toggle |
 | `POST /api/import` `[cards]` or `{decks, cards}` | upserts by id and never touches progress; max 5000 cards per request |
-| `GET` / `PATCH /api/settings` (UI at `/settings`) | `again_gap` (5), `good_gap` (15), `learned_after` (3) |
+| `GET` / `PATCH /api/settings` (UI at `/settings`) | `again_gap` (5), `good_gap` (15), `learned_after` (3), `review_gap` (50) |
 
 Card shape: `{id, deck, front, back, tags?, category?, media?: [{type: image|video|audio, url, side: front|back}], meta?: {season?, ...}}`.
 
