@@ -6,7 +6,8 @@
  *   npm run anki:convert -- path/to/export.apkg --upload   # also imports into the app
  *
  * --upload needs --url/PENSIEVE_URL and --passcode/APP_PASSCODE (.env.local is read).
- * Re-running updates card content and never resets study progress. See transform.ts for the mapping.
+ * Re-running updates card content and never resets study progress. See transform.ts for the mapping;
+ * a word that appears more than once in a language is merged into one card.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -61,6 +62,10 @@ async function main() {
           .filter(([id]) => id.startsWith(`${d.id}:`))
           .reduce((s, [, v]) => s + v, 0);
     console.log(`  ${d.parent ? "  " : ""}${d.name.padEnd(d.parent ? 14 : 16)} ${n}`);
+  }
+  if (stats.merged.length) {
+    console.log(`ℹ ${stats.merged.length} words appeared more than once and were merged into one card each:`);
+    for (const m of stats.merged) console.log(`    ${m.front}  →  ${m.back}`);
   }
   if (issues.length) console.log(`⚠ ${issues.length} notes skipped (see convert-report.json)`);
   console.log(`Wrote ${DIR}/cards.json, cards-preview.csv and convert-report.json`);

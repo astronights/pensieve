@@ -120,10 +120,12 @@ export function convertCollection(col: AnkiCollection, fixes: Fixes = {}) {
     });
   });
 
+  const { kept, merged } = mergeDuplicates(rows);
+
   // Number levels per language and topics per level in natural order, for sortable ids.
   const levels = new Map<string, string[]>();
   const topics = new Map<string, string[]>();
-  for (const r of rows) {
+  for (const r of kept) {
     levels.set(r.language, [...new Set([...(levels.get(r.language) ?? []), r.level])].sort(natural));
     const key = `${r.language}\u0000${r.level}`;
     topics.set(key, [...new Set([...(topics.get(key) ?? []), r.topic])].sort(natural));
@@ -136,7 +138,7 @@ export function convertCollection(col: AnkiCollection, fixes: Fixes = {}) {
     for (const level of langLevels) decks.push({ id: `${parent}:${slug(level)}`, name: level, parent });
   }
 
-  const cards: ImportCard[] = rows
+  const cards: ImportCard[] = kept
     .map((r) => {
       const lang = slug(r.language);
       const levelIdx = levels.get(r.language)!.indexOf(r.level) + 1;
@@ -157,5 +159,93 @@ export function convertCollection(col: AnkiCollection, fixes: Fixes = {}) {
   const byDeck: Record<string, number> = {};
   for (const c of cards) byDeck[c.deck] = (byDeck[c.deck] ?? 0) + 1;
   const payload: ImportPayload = { decks, cards };
-  return { payload, issues, stats: { notes: col.notes.length, cards: cards.length, byDeck } };
+  return { payload, issues, stats: { notes: col.notes.length, cards: cards.length, byDeck, merged } };
+}
+
+const ACCENTS = /[\u0300\u0301]/g;
+
+/** The same word for dedup: ignores stress marks, case and a trailing "?", "." or "!" (keeps ё). */
+export function wordKey(front: string): string {
+  return front
+    .normalize("NFD")
+    .replace(ACCENTS, "")
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[\s?.!]+$/, "")
+    .trim();
+}
+
+const meaningParts = (back: string) =>
+  back
+    .toLowerCase()
+    .split(/[,;/]/)
+    .map((p) =>
+      p
+        .replace(/[()[\].!?'"]/g, "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
+    .filter(Boolean);
+
+/**
+ * Joins the meanings of duplicate cards: drops a meaning that repeats another or only lists some of
+ * its parts ("Hoodie" next to "hoodie, sweatshirt"), and joins the rest with "; ".
+ */
+export function mergeMeanings(backs: string[]): string {
+  const keep: string[] = [];
+  for (const back of backs) {
+    const parts = meaningParts(back);
+    const covered = (other: string) => {
+      const otherParts = meaningParts(other);
+      return parts.every((p) => otherParts.includes(p));
+    };
+    if (keep.some(covered)) continue;
+    // A later, fuller meaning replaces earlier ones it covers.
+    for (let i = keep.length - 1; i >= 0; i--) {
+      const earlier = meaningParts(keep[i]);
+      if (earlier.every((p) => parts.includes(p))) keep.splice(i, 1);
+    }
+    keep.push(back);
+  }
+  return keep.join("; ");
+}
+
+type Merged = { language: string; front: string; from: string[]; backs: string[]; back: string };
+
+/**
+ * Within a language, cards whose fronts are the same word become one card: it stays where the
+ * word first comes up (level, topic, Anki order) and gets every distinct meaning.
+ */
+function mergeDuplicates<
+  R extends Placement & { noteOrder: number; front: string; back: string; raw: Record<string, unknown> },
+>(rows: R[]) {
+  const studyOrder = (a: R, b: R) =>
+    natural(a.level, b.level) || natural(a.topic, b.topic) || a.noteOrder - b.noteOrder;
+  const groups = new Map<string, R[]>();
+  for (const r of [...rows].sort(studyOrder)) {
+    const key = `${r.language}\u0000${wordKey(r.front)}`;
+    groups.set(key, [...(groups.get(key) ?? []), r]);
+  }
+  const kept: R[] = [];
+  const merged: Merged[] = [];
+  for (const group of groups.values()) {
+    const [first, ...rest] = group;
+    if (rest.length === 0) {
+      kept.push(first);
+      continue;
+    }
+    // Show the spelling with stress marks if any duplicate has them.
+    const stresses = (r: R) => (r.front.normalize("NFD").match(ACCENTS) ?? []).length;
+    const front = group.reduce((best, r) => (stresses(r) > stresses(best) ? r : best)).front;
+    const back = mergeMeanings(group.map((r) => r.back));
+    kept.push({ ...first, front, back, raw: { ...first.raw, duplicates: rest.map((r) => r.raw) } });
+    merged.push({
+      language: first.language,
+      front,
+      from: group.map((r) => `${r.level} · ${r.topic}`),
+      backs: group.map((r) => r.back),
+      back,
+    });
+  }
+  return { kept, merged };
 }

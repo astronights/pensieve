@@ -4,7 +4,15 @@ import { parseImportPayload } from "@/lib/import";
 import { loadFixes } from "../scripts/anki/convert";
 import type { AnkiCollection } from "../scripts/anki/read";
 import { readAnkiExport } from "../scripts/anki/read";
-import { convertCollection, escapeMarkdown, htmlToText, levelName, placeDeck } from "../scripts/anki/transform";
+import {
+  convertCollection,
+  escapeMarkdown,
+  htmlToText,
+  levelName,
+  mergeMeanings,
+  placeDeck,
+  wordKey,
+} from "../scripts/anki/transform";
 
 describe("field cleanup", () => {
   it("decodes HTML to plain text", () => {
@@ -139,5 +147,56 @@ describe("fixes", () => {
     const meanings = (await loadFixes()).Mandarin.meanings!;
     expect(Object.keys(meanings)).toHaveLength(98);
     for (const [front, meaning] of Object.entries(meanings)) expect(meaning.trim(), front).not.toBe("");
+  });
+});
+
+describe("duplicates", () => {
+  it("treats spellings that differ only in stress marks, case or end punctuation as the same word", () => {
+    expect(wordKey("толсто́вка")).toBe(wordKey("толстовка"));
+    expect(wordKey("Извини́те.")).toBe(wordKey("Извини́те"));
+    expect(wordKey("почему́?")).toBe(wordKey("почему́"));
+    expect(wordKey("En kopp kaffe")).toBe(wordKey("en kopp kaffe"));
+    // Different letters are different words.
+    expect(wordKey("всё")).not.toBe(wordKey("все"));
+    expect(wordKey("far")).not.toBe(wordKey("får"));
+    expect(wordKey("var")).not.toBe(wordKey("vår"));
+  });
+
+  it("joins distinct meanings and drops repeated or covered ones", () => {
+    expect(mergeMeanings(["why?", "why?"])).toBe("why?");
+    expect(mergeMeanings(["Excuse me", "Excuse (me)."])).toBe("Excuse me");
+    expect(mergeMeanings(["Hoodie", "hoodie, sweatshirt"])).toBe("hoodie, sweatshirt");
+    expect(mergeMeanings(["No", "there is no, there are no"])).toBe("No; there is no, there are no");
+    expect(mergeMeanings(["how?", "like (in comparison)"])).toBe("how?; like (in comparison)");
+  });
+
+  it("merges a word that appears twice in a language into one card where it first comes up", () => {
+    const col = collection();
+    col.decks.push({ id: "5", name: "Russian - Между нами Unit 4::Function Words" });
+    col.decks.push({ id: "6", name: "Russian - Между нами Unit 1::Greetings & Phrases" });
+    col.notes.push(
+      { id: "a", guid: "ga", typeId: "b", fields: ["нет", "there is no"], tags: [] },
+      { id: "b", guid: "gb", typeId: "b", fields: ["Нет", "No"], tags: [] },
+      { id: "c", guid: "gc", typeId: "b", fields: ["Bror", "brother"], tags: [] },
+    );
+    col.cards.push(
+      { id: "ca", noteId: "a", deckId: "5", ord: 0 },
+      { id: "cb", noteId: "b", deckId: "6", ord: 0 },
+      // Same word as "bror" in another chapter, but a different language from Russian.
+      { id: "cc", noteId: "c", deckId: "0", ord: 0 },
+    );
+    const { payload, stats } = convertCollection(col, { Mandarin: { meanings: { 你好: "hello", 水: "water" } } });
+    const net = payload.cards.filter((c) => wordKey(c.front) === "нет");
+    expect(net).toHaveLength(1);
+    expect(net[0]).toMatchObject({
+      deck: "anki:russian:unit-1",
+      category: "Greetings & Phrases",
+      back: "No; there is no",
+    });
+    expect(net[0].meta).toMatchObject({ raw: { guid: "gb", duplicates: [{ guid: "ga" }] } });
+    // Unit 4 lost its only card, so it isn't created.
+    expect(payload.decks.map((d) => d.id)).not.toContain("anki:russian:unit-4");
+    expect(payload.cards.filter((c) => wordKey(c.front) === "bror")).toHaveLength(1);
+    expect(stats.merged.map((m) => m.front)).toEqual(expect.arrayContaining(["Нет", "bror"]));
   });
 });
