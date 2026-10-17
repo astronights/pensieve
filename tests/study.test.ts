@@ -10,7 +10,6 @@ import { SEED } from "@/lib/seed-data";
 import { getSettings, updateSettings } from "@/lib/settings";
 import { createTestDb } from "./helpers/db";
 
-
 let db: DB;
 let close: () => Promise<void>;
 
@@ -114,7 +113,10 @@ describe("SRS decks", () => {
     const turns = shown.flatMap((c, i) => (c === id(0) ? [i] : []));
     // Shown at answer 0, back after 15 others (index 16), then after 30 more (index 47).
     expect(turns).toEqual([0, 16, 47]);
-    const [s] = await db.select().from(cardState).where(eq(cardState.cardId, id(0)));
+    const [s] = await db
+      .select()
+      .from(cardState)
+      .where(eq(cardState.cardId, id(0)));
     expect(s).toMatchObject({ streak: 3, dueAt: null });
     expect(s.learnedAt).not.toBeNull();
     expect(await deck("lang")).toMatchObject({ learned: 1 });
@@ -229,6 +231,58 @@ describe("SRS decks", () => {
   it("rejects unknown cards and decks", async () => {
     await expect(good("missing")).rejects.toMatchObject({ status: 404 });
     await expect(next("missing")).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("decks count their own answers", () => {
+  const twoDecks = () =>
+    parseImportPayload({
+      decks: [
+        { id: "zql", name: "ZQL", kind: "srs" },
+        { id: "ru", name: "Russian", kind: "srs" },
+      ],
+      cards: ["zql", "ru"].flatMap((d) =>
+        Array.from({ length: 40 }, (_, i) => ({
+          id: `${d}:${String(i).padStart(3, "0")}`,
+          deck: d,
+          front: `${d}${i}`,
+          back: "x",
+        })),
+      ),
+    });
+
+  it("studying another deck doesn't bring this deck's cards back early", async () => {
+    await importCards(db, twoDecks());
+    await study("zql", 3, (c) => (c === "zql:001" ? "again" : "good")); // zql:001 due 5 ZQL cards later
+    await study("ru", 30);
+    // Back in ZQL nothing is due yet: new cards continue, and zql:001 returns after 5 other ZQL
+    // cards (002 … 006), not straight away as if the Russian answers had counted.
+    const shown = await study("zql", 8);
+    expect(shown).toEqual(["zql:003", "zql:004", "zql:005", "zql:006", "zql:001", "zql:007", "zql:008", "zql:009"]);
+  });
+
+  it("a parent and its sub-decks share one count", async () => {
+    await importCards(
+      db,
+      parseImportPayload({
+        decks: [
+          { id: "lang", name: "Lang", kind: "srs" },
+          { id: "lang:a", name: "A", parent: "lang" },
+          { id: "lang:b", name: "B", parent: "lang" },
+        ],
+        cards: ["a", "b"].flatMap((sub) =>
+          Array.from({ length: 10 }, (_, i) => ({
+            id: `lang:${sub}:${i}`,
+            deck: `lang:${sub}`,
+            front: `${sub}${i}`,
+            back: "x",
+          })),
+        ),
+      }),
+    );
+    await again("lang:a:0");
+    await study("lang:b", 5); // answers in sub-deck B count for the whole Lang group
+    expect(await next("lang:a")).toMatchObject({ source: "due", card: { id: "lang:a:0" } });
   });
 });
 

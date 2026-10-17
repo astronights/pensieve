@@ -13,7 +13,8 @@ Two answers, no daily limit:
   50 cards and need 3 more Goods in a row first. Again during that review keeps them there (back
   after 50 cards) and the 3 review Goods start again.
 
-Cards are placed by how many answers ago they came up, not by time, so you can study as many
+Cards are placed by how many answers ago they came up in the same deck (a deck and its sub-decks
+share one count; other decks don't move it), not by time, so you can study as many
 cards in a sitting as you like. Each turn shows the card being learned whose turn has come, else
 the next new card, else the next card being learned (early). The numbers are in Settings.
 

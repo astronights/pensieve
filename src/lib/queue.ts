@@ -63,9 +63,6 @@ export type NextFilters = {
   exclude?: string | null;
 };
 
-/** The answer counter: every answer appends a review_log row, so its latest id counts answers. */
-const position = sql.raw(`(select coalesce(max("id"), 0) from "review_log")`);
-
 /** Never seen. A card_state row can exist without that (e.g. the card was only bookmarked). */
 const unseen = sql.raw(
   `("card_state"."card_id" is null or ("card_state"."seen_at" is null and "card_state"."due_at" is null and "card_state"."learned_at" is null))`,
@@ -155,9 +152,15 @@ const toDTO = ({ dueAt, ...r }: CardRow): CardDTO => ({
   bookmarked: r.bookmarked ?? false,
 });
 
+/** Answers given so far in a top-level deck and its sub-decks; cards come back by this count. */
+export async function groupPosition(db: DB, groupId: string): Promise<number> {
+  const [row] = await db.select({ answers: decks.answers }).from(decks).where(eq(decks.id, groupId)).limit(1);
+  return row?.answers ?? 0;
+}
+
 /**
  * Picks the next card to show. There is no daily limit; cards are placed by how many answers
- * ago they were answered, not by time.
+ * ago (in the same top-level deck) they were answered, not by time.
  * 1. A card being learned whose turn has come (Again/Good moved it N cards back), earliest first.
  * 2. Otherwise a new card: import order (SRS decks) or random (browse decks).
  * 3. Otherwise the card being learned that is next in line, shown early.
@@ -169,6 +172,8 @@ export async function nextCard(db: DB, deckId: string, filters: NextFilters = {}
   const deck = { id: summary.id, name: summary.name, kind: summary.kind };
   const counts = toCounts(summary);
   const extra = filterConditions(filters);
+  // Where this deck's group (the top-level deck and its sub-decks) is in its answer count.
+  const position = await groupPosition(db, summary.parent ?? summary.id);
 
   const learningCard = async (dueOnly: boolean) => {
     const [row] = await db

@@ -32,6 +32,9 @@ export const decks = pgTable(
     // One level of sub-decks: a sub-deck's parent is always a top-level deck, and a sub-deck
     // always has its parent's kind. Both rules are enforced on import (lib/import.ts).
     parent: text("parent").references((): AnyPgColumn => decks.id),
+    // Answers given in this deck and its sub-decks (kept on top-level decks). "Back after N cards"
+    // counts these, so studying one deck doesn't move another deck's cards along.
+    answers: integer("answers").notNull().default(0),
   },
   (t) => [index("decks_parent_idx").on(t.parent)],
 );
@@ -46,17 +49,20 @@ export const cards = pgTable(
       .references(() => decks.id),
     front: text("front").notNull(),
     back: text("back").notNull(),
-    tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+    tags: text("tags")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     category: text("category"),
-    media: jsonb("media").$type<MediaItem[]>().notNull().default(sql`'[]'::jsonb`),
+    media: jsonb("media")
+      .$type<MediaItem[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     meta: jsonb("meta").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [
-    index("cards_deck_idx").on(t.deck),
-    index("cards_deck_category_idx").on(t.deck, t.category),
-  ],
+  (t) => [index("cards_deck_idx").on(t.deck), index("cards_deck_category_idx").on(t.deck, t.category)],
 );
 
 export const cardState = pgTable(
