@@ -3,12 +3,12 @@ import { skipReason } from "../scripts/migrate";
 
 describe("migrations on deploy", () => {
   it("run on production deploys, locally and in CI", () => {
-    expect(skipReason({ VERCEL_ENV: "production" })).toBeNull();
-    expect(skipReason({})).toBeNull();
+    expect(skipReason("production")).toBeNull();
+    expect(skipReason(undefined)).toBeNull();
   });
 
   it("are skipped on preview and development builds, which share the production database", () => {
-    expect(skipReason({ VERCEL_ENV: "preview" })).toMatch(/preview build/);
-    expect(skipReason({ VERCEL_ENV: "development" })).toMatch(/development build/);
+    expect(skipReason("preview")).toMatch(/preview build/);
+    expect(skipReason("development")).toMatch(/development build/);
   });
 });

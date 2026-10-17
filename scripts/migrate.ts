@@ -13,15 +13,14 @@ import { Pool } from "pg";
 
 config({ path: ".env.local", quiet: true });
 
-/** Why migrations are skipped in this environment, or null to run them. */
-export function skipReason(env: { VERCEL_ENV?: string }): string | null {
-  const target = env.VERCEL_ENV;
+/** Why migrations are skipped for this Vercel environment (VERCEL_ENV), or null to run them. */
+export function skipReason(target: string | undefined): string | null {
   if (target && target !== "production") return `Skipping migrations: this is a ${target} build, not production.`;
   return null;
 }
 
 async function main() {
-  const skip = skipReason(process.env);
+  const skip = skipReason(process.env.VERCEL_ENV);
   if (skip) {
     console.log(skip);
     return;
