@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { DB } from "@/db";
 import { type Answer, cards, cardState, decks, reviewLog } from "@/db/schema";
 import { badRequest, notFound } from "./errors";
@@ -27,7 +27,7 @@ export type ReviewResult = {
   card_id: string;
   deck: string;
   streak: number;
-  /** The answer counter value at which the card comes back; null when it isn't being learned. */
+  /** Its deck group's answer count at which the card comes back; null when it isn't being learned. */
   due_at: number | null;
   learned: boolean;
   missed: boolean;
@@ -55,7 +55,7 @@ const toResult = (s: typeof cardState.$inferSelect, deck: string): ReviewResult 
  */
 export async function applyReview(db: DB, input: ReviewInput, now = new Date()): Promise<ReviewResult> {
   const [found] = await db
-    .select({ deck: decks.id, kind: decks.kind, state: cardState })
+    .select({ deck: decks.id, parent: decks.parent, kind: decks.kind, state: cardState })
     .from(cards)
     .innerJoin(decks, eq(decks.id, cards.deck))
     .leftJoin(cardState, eq(cardState.cardId, cards.id))
@@ -79,25 +79,28 @@ export async function applyReview(db: DB, input: ReviewInput, now = new Date()):
   const kind: Answer = seenOnly ? "seen" : input.answer;
 
   const row = await db.transaction(async (tx) => {
-    // The new log row's id is the current position in the answer count.
-    const [log] = await tx
-      .insert(reviewLog)
-      .values({ cardId: input.card_id, reviewedAt: now, answer: kind })
-      .returning({ id: reviewLog.id });
+    await tx.insert(reviewLog).values({ cardId: input.card_id, reviewedAt: now, answer: kind });
+    // Count the answer in the card's top-level deck; "back after N cards" is relative to that count.
+    const [group] = await tx
+      .update(decks)
+      .set({ answers: sql`${decks.answers} + 1` })
+      .where(eq(decks.id, found.parent ?? found.deck))
+      .returning({ position: decks.answers });
+    const position = group.position;
 
     let values: Partial<typeof cardState.$inferInsert>;
     if (seenOnly) {
       values = { seenAt: now };
     } else if (input.answer === "again") {
       const next = afterAgain(settings, existing?.streak ?? 0, existing?.missed ?? false);
-      values = { seenAt: now, streak: next.streak, dueAt: log.id + next.gap, learnedAt: null, missed: true };
+      values = { seenAt: now, streak: next.streak, dueAt: position + next.gap, learnedAt: null, missed: true };
     } else {
       const streak = (existing?.streak ?? 0) + 1;
       const next = afterGood(settings, streak, existing?.missed ?? false);
       values =
         next === "learned"
           ? { seenAt: now, streak, dueAt: null, learnedAt: now }
-          : { seenAt: now, streak, dueAt: log.id + next };
+          : { seenAt: now, streak, dueAt: position + next };
     }
 
     const [saved] = await tx

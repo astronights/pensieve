@@ -88,7 +88,7 @@ describe("importCards", () => {
   it("updates kind of explicitly listed decks but not implicit ones", async () => {
     await importCards(db, parseImportPayload({ decks: [{ id: "zql", name: "ZQL", kind: "browse" }], cards: [] }));
     await importCards(db, parseImportPayload([card()]));
-    expect((await db.select().from(decks))[0]).toEqual({ id: "zql", name: "ZQL", kind: "browse", parent: null });
+    expect((await db.select().from(decks))[0]).toEqual({ id: "zql", name: "ZQL", kind: "browse", parent: null, answers: 0 });
   });
 });
 
