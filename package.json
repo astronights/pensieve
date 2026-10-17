@@ -18,7 +18,8 @@
     "db:check": "drizzle-kit check",
     "seed": "tsx --tsconfig tsconfig.json scripts/seed.ts",
     "zql:scrape": "tsx scripts/zql/scrape.ts",
-    "zql:convert": "tsx scripts/zql/convert.ts"
+    "zql:convert": "tsx scripts/zql/convert.ts",
+    "anki:inspect": "tsx scripts/anki/inspect.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
@@ -36,10 +37,14 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/sql.js": "^1.4.11",
     "dotenv": "^18.0.7",
     "drizzle-kit": "^0.31.11",
     "eslint": "^9",
     "eslint-config-next": "16.4.0",
+    "fflate": "^0.8.3",
+    "fzstd": "^0.1.1",
+    "sql.js": "^1.15.0",
     "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.4"

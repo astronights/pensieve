@@ -103,6 +103,17 @@ type `srs`, with ids like `zql:S01:GW08a:R3:P2:Q1` (sorted in game order). The q
 Topic, source and qid are shown in the back footer; everything, including the raw record, is kept in
 `meta`. Re-running the import only updates content; progress is never reset.
 
+### Anki
+
+```bash
+npm run anki:inspect -- ~/Downloads/MyDecks.apkg   # → content/anki/<name>-report.json + -sample.json
+```
+
+Export from Anki with **File → Export…** as an *Anki Deck Package (.apkg)* (one deck or all decks) or an
+*Anki Collection Package (.colpkg)*; both the current and the "Support older Anki versions" formats are
+read. The report lists the decks (nested with `::`), note types with their fields and card templates,
+the formatting used in each field and the most common tags, for planning the import mapping.
+
 ## Development
 
 ```bash
