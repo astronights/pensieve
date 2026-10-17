@@ -4,8 +4,9 @@
  *   npm run anki:inspect -- path/to/export.apkg        (or a .colpkg: File → Export → whole collection)
  *
  * Writes content/anki/<name>-report.json (decks, note types, fields, formatting used in each field,
- * tags) and content/anki/<name>-sample.json (a few full notes of each note type), and prints a
- * summary. Nothing is uploaded.
+ * tags), content/anki/<name>-sample.json (a few full notes of each note type) and
+ * content/anki/<name>-notes.json (every note: deck, fields, tags), and prints a summary.
+ * Nothing is uploaded.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -141,6 +142,29 @@ export function buildSample(col: AnkiCollection) {
   });
 }
 
+/** Every note with its deck(s), for checking the whole collection by eye. */
+export function buildNotes(col: AnkiCollection) {
+  const deckName = new Map(col.decks.map((d) => [d.id, d.name]));
+  const typeById = new Map(col.noteTypes.map((t) => [t.id, t]));
+  const decksByNote = new Map<string, Set<string>>();
+  for (const c of col.cards) {
+    const set = decksByNote.get(c.noteId) ?? new Set();
+    set.add(deckName.get(c.deckId) ?? c.deckId);
+    decksByNote.set(c.noteId, set);
+  }
+  return col.notes
+    .map((n) => {
+      const type = typeById.get(n.typeId);
+      return {
+        deck: [...(decksByNote.get(n.id) ?? [])].join(" | "),
+        note_type: type?.name,
+        fields: Object.fromEntries((type?.fields ?? []).map((name, i) => [name, n.fields[i] ?? ""])),
+        tags: n.tags,
+      };
+    })
+    .sort((a, b) => a.deck.localeCompare(b.deck));
+}
+
 async function main() {
   const file = process.argv[2];
   if (!file) {
@@ -153,8 +177,10 @@ async function main() {
   await mkdir(DIR, { recursive: true });
   const reportPath = path.join(DIR, `${stem}-report.json`);
   const samplePath = path.join(DIR, `${stem}-sample.json`);
+  const notesPath = path.join(DIR, `${stem}-notes.json`);
   await writeFile(reportPath, JSON.stringify(report, null, 2));
   await writeFile(samplePath, JSON.stringify(buildSample(col), null, 2));
+  await writeFile(notesPath, JSON.stringify(buildNotes(col), null, 2));
 
   console.log(`${file}: ${report.totals.notes} notes, ${report.totals.cards} cards (${col.format})\n`);
   console.log("Decks:");
@@ -169,7 +195,7 @@ async function main() {
     console.log(`    cards:  ${t.templates.map((tpl) => tpl.name).join(", ")}`);
   }
   if (report.media_files) console.log(`\nMedia files in the export: ${report.media_files} (not imported)`);
-  console.log(`\nWrote ${reportPath} and ${samplePath}. Send me both and we'll decide the mapping.`);
+  console.log(`\nWrote ${reportPath}, ${samplePath} and ${notesPath} (every note).`);
 }
 
 if (require.main === module) {

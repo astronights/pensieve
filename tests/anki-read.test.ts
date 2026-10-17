@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildReport, buildSample } from "../scripts/anki/inspect";
+import { buildNotes, buildReport, buildSample } from "../scripts/anki/inspect";
 import { readAnkiExport } from "../scripts/anki/read";
 
 // Real exports made by Anki itself (tests/fixtures/anki/make_fixtures.py): the current format
@@ -68,6 +68,19 @@ describe("inspect report", () => {
         { template: "Card 1", deck: "Spanish" },
         { template: "Card 2", deck: "Spanish" },
       ],
+    });
+  });
+});
+
+describe("inspect notes", () => {
+  it("lists every note with its deck, fields and tags", async () => {
+    const notes = buildNotes(await readAnkiExport(fixture("modern.apkg")));
+    expect(notes).toHaveLength(8);
+    expect(notes.find((n) => n.fields.Front === "el perro")).toEqual({
+      deck: "Spanish",
+      note_type: "Basic (and reversed card)",
+      fields: { Front: "el perro", Back: "the dog" },
+      tags: ["nouns"],
     });
   });
 });

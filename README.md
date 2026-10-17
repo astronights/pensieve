@@ -106,7 +106,7 @@ Topic, source and qid are shown in the back footer; everything, including the ra
 ### Anki
 
 ```bash
-npm run anki:inspect -- ~/Downloads/MyDecks.apkg   # → content/anki/<name>-report.json + -sample.json
+npm run anki:inspect -- ~/Downloads/MyDecks.apkg   # → content/anki/<name>-report.json, -sample.json, -notes.json
 ```
 
 Export from Anki with **File → Export…** as an *Anki Deck Package (.apkg)* (one deck or all decks) or an
