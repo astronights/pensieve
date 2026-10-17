@@ -103,6 +103,29 @@ type `srs`, with ids like `zql:S01:GW08a:R3:P2:Q1` (sorted in game order). The q
 Topic, source and qid are shown in the back footer; everything, including the raw record, is kept in
 `meta`. Re-running the import only updates content; progress is never reset.
 
+### Anki
+
+```bash
+npm run anki:inspect -- ~/Downloads/MyDecks.apkg   # → content/anki/<name>-report.json, -sample.json, -notes.json
+```
+
+Export from Anki with **File → Export…** as an *Anki Deck Package (.apkg)* (one deck or all decks) or an
+*Anki Collection Package (.colpkg)*; both the current and the "Support older Anki versions" formats are
+read. The report lists the decks (nested with `::`), note types with their fields and card templates,
+the formatting used in each field and the most common tags, for planning the import mapping.
+
+```bash
+npm run anki:convert -- ~/Downloads/MyDecks.apkg           # dry run → content/anki/cards.json, cards-preview.csv
+npm run anki:convert -- ~/Downloads/MyDecks.apkg --upload  # import (passcode from APP_PASSCODE or --passcode)
+```
+
+Anki decks named `<Language> - <Book/Level>::<Topic>` become one deck per language with a sub-deck per
+level (`Russian - Между нами Unit 1::Clothing` → **Russian › Unit 1**, `Mandarin - HSK1::…` → **Mandarin ›
+HSK 1**); the topic becomes the card's category, and new cards come up topic by topic in Anki's order.
+Fields are converted from HTML to plain text, tags are dropped (the raw note is kept in `meta.raw`) and
+everything starts unseen. The Mandarin meanings, which the export only had as scrambled tags, come from
+`scripts/anki/fixes/mandarin-meanings.json` and are shown under the pinyin.
+
 ## Development
 
 ```bash
