@@ -1,6 +1,10 @@
 /**
- * Applies pending migrations from ./drizzle. Runs on every Vercel deploy (see `vercel-build`).
+ * Applies pending migrations from ./drizzle. Runs on Vercel deploys (see `vercel-build`).
  * Set SEED_DEMO=1 to also upsert the 20 demo cards (idempotent; progress is never reset).
+ *
+ * Only production deploys touch the database: Vercel also builds a preview for every pull request,
+ * and preview and production share one database, so a preview build must not change its schema
+ * before the pull request is merged. Local runs and CI (no VERCEL_ENV) always migrate.
  */
 import { config } from "dotenv";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -9,7 +13,20 @@ import { Pool } from "pg";
 
 config({ path: ".env.local", quiet: true });
 
+/** Why migrations are skipped in this environment, or null to run them. */
+export function skipReason(env: { VERCEL_ENV?: string }): string | null {
+  const target = env.VERCEL_ENV;
+  if (target && target !== "production") return `Skipping migrations: this is a ${target} build, not production.`;
+  return null;
+}
+
 async function main() {
+  const skip = skipReason(process.env);
+  if (skip) {
+    console.log(skip);
+    return;
+  }
+
   // Prefer a direct (non-pooled) connection for DDL when one is provided.
   const url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
   if (!url) {
@@ -34,7 +51,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
