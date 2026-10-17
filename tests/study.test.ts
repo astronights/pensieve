@@ -181,7 +181,7 @@ describe("SRS decks", () => {
 
   it("describes what each answer will do", async () => {
     await importCards(db, srsDeck(1));
-    expect((await next("lang")).outcomes).toEqual({ again: 5, good: 15, streak: 0, needed: 3 });
+    expect((await next("lang")).outcomes).toEqual({ again: 5, good: 15, streak: 0, needed: 3, learnedAfter: 3 });
     await good(id(0));
     expect((await next("lang")).outcomes).toMatchObject({ good: 30, streak: 1 });
     await good(id(0));
