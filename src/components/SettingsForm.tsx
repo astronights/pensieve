@@ -25,6 +25,13 @@ const FIELDS: { key: keyof Settings; label: string; help: string; min: number; m
     min: 1,
     max: 10,
   },
+  {
+    key: "review_gap",
+    label: "Missed cards: review every",
+    help: "A card you've ever missed needs that many Goods in a row again, this many cards apart, before it's learned.",
+    min: 1,
+    max: 1000,
+  },
 ];
 
 export default function SettingsForm({ initial }: { initial: Settings }) {

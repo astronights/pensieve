@@ -3,7 +3,7 @@ import type { DB } from "@/db";
 import { cards, cardState, decks, type DeckKind, type MediaItem } from "@/db/schema";
 import { clientMeta } from "./card-extras";
 import { notFound } from "./errors";
-import { getSettings, goodGap } from "./settings";
+import { afterAgain, afterGood, getSettings, goodsNeeded } from "./settings";
 
 export type DeckSummary = {
   id: string;
@@ -35,6 +35,8 @@ export type CardDTO = {
   streak: number;
   /** In the Again/Good loop (a browse-deck card only joins it on Again). */
   learning: boolean;
+  /** Answered Again at some point, so it needs extra review Goods before it's learned. */
+  missed: boolean;
   bookmarked: boolean;
 };
 
@@ -44,8 +46,11 @@ export type NextResult = {
   /** due: its turn came up; new: never seen; ahead: nothing else left, so shown early. */
   source: "due" | "new" | "ahead" | null;
   counts: Counts;
-  /** What each answer does: how many cards later it returns, or "learned" for the final Good. */
-  outcomes?: { again: number; good: number | "learned"; streak: number; learnedAfter: number };
+  /**
+   * What each answer does: how many cards later it returns, or "learned" for the final Good.
+   * `needed` is how many Goods in a row this card needs in total (more once it has been missed).
+   */
+  outcomes?: { again: number; good: number | "learned"; streak: number; needed: number };
 };
 
 export type NextFilters = {
@@ -129,12 +134,14 @@ const cardColumns = {
   meta: cards.meta,
   streak: cardState.streak,
   dueAt: cardState.dueAt,
+  missed: cardState.missed,
   bookmarked: cardState.bookmarked,
 };
 
-type CardRow = Omit<CardDTO, "streak" | "learning" | "bookmarked"> & {
+type CardRow = Omit<CardDTO, "streak" | "learning" | "missed" | "bookmarked"> & {
   streak: number | null;
   dueAt: number | null;
+  missed: boolean | null;
   bookmarked: boolean | null;
 };
 
@@ -144,6 +151,7 @@ const toDTO = ({ dueAt, ...r }: CardRow): CardDTO => ({
   media: r.media ?? [],
   streak: r.streak ?? 0,
   learning: dueAt !== null,
+  missed: r.missed ?? false,
   bookmarked: r.bookmarked ?? false,
 });
 
@@ -202,17 +210,16 @@ export async function nextCard(db: DB, deckId: string, filters: NextFilters = {}
   if (!card) return { deck, card, source, counts };
 
   const settings = await getSettings(db);
-  const streak = card.streak + 1;
   return {
     deck,
     card,
     source,
     counts,
     outcomes: {
-      again: settings.again_gap,
-      good: streak >= settings.learned_after ? "learned" : goodGap(settings, streak),
+      again: afterAgain(settings, card.streak, card.missed).gap,
+      good: afterGood(settings, card.streak + 1, card.missed),
       streak: card.streak,
-      learnedAfter: settings.learned_after,
+      needed: goodsNeeded(settings, card.missed),
     },
   };
 }

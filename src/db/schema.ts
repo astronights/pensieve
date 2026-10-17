@@ -72,6 +72,8 @@ export const cardState = pgTable(
     dueAt: integer("due_at"),
     seenAt: timestamp("seen_at", { withTimezone: true }),
     learnedAt: timestamp("learned_at", { withTimezone: true }),
+    // Answered Again at least once. Such a card needs extra, widely spaced Goods before it's learned.
+    missed: boolean("missed").notNull().default(false),
     bookmarked: boolean("bookmarked").notNull().default(false),
   },
   (t) => [index("card_state_due_at_idx").on(t.dueAt)],
