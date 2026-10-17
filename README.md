@@ -114,6 +114,18 @@ Export from Anki with **File → Export…** as an *Anki Deck Package (.apkg)* (
 read. The report lists the decks (nested with `::`), note types with their fields and card templates,
 the formatting used in each field and the most common tags, for planning the import mapping.
 
+```bash
+npm run anki:convert -- ~/Downloads/MyDecks.apkg           # dry run → content/anki/cards.json, cards-preview.csv
+npm run anki:convert -- ~/Downloads/MyDecks.apkg --upload  # import (passcode from APP_PASSCODE or --passcode)
+```
+
+Anki decks named `<Language> - <Book/Level>::<Topic>` become one deck per language with a sub-deck per
+level (`Russian - Между нами Unit 1::Clothing` → **Russian › Unit 1**, `Mandarin - HSK1::…` → **Mandarin ›
+HSK 1**); the topic becomes the card's category, and new cards come up topic by topic in Anki's order.
+Fields are converted from HTML to plain text, tags are dropped (the raw note is kept in `meta.raw`) and
+everything starts unseen. The Mandarin meanings, which the export only had as scrambled tags, come from
+`scripts/anki/fixes/mandarin-meanings.json` and are shown under the pinyin.
+
 ## Development
 
 ```bash

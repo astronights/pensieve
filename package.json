@@ -19,7 +19,8 @@
     "seed": "tsx --tsconfig tsconfig.json scripts/seed.ts",
     "zql:scrape": "tsx scripts/zql/scrape.ts",
     "zql:convert": "tsx scripts/zql/convert.ts",
-    "anki:inspect": "tsx scripts/anki/inspect.ts"
+    "anki:inspect": "tsx scripts/anki/inspect.ts",
+    "anki:convert": "tsx scripts/anki/convert.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
