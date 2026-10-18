@@ -131,7 +131,7 @@ describe("SRS decks", () => {
     expect(await deck("lang")).toMatchObject({ learning: 0, new: 0, learned: 1, total: 1 });
   });
 
-  it("a missed card needs 3 more Goods in a row, 50 cards apart, before it's learned", async () => {
+  it("a missed card needs 3 more Goods in a row, 50, 100 then 200 cards apart, before it's learned", async () => {
     await importCards(db, srsDeck(1));
     await good(id(0));
     expect(await again(id(0))).toMatchObject({ streak: 0, missed: true });
@@ -142,8 +142,11 @@ describe("SRS decks", () => {
     expect(third).toMatchObject({ streak: 3, learned: false });
     const [log] = await db.select({ id: reviewLog.id }).from(reviewLog).orderBy(desc(reviewLog.id)).limit(1);
     expect(third.due_at).toBe(log.id + 50);
-    expect(await good(id(0))).toMatchObject({ streak: 4, learned: false });
-    expect(await good(id(0))).toMatchObject({ streak: 5, learned: false });
+    // Each answer moves the deck's count on by one, so the gaps are due_at - (log.id + 1), …
+    const fourth = await good(id(0));
+    expect(fourth).toMatchObject({ streak: 4, learned: false, due_at: log.id + 1 + 100 });
+    const fifth = await good(id(0));
+    expect(fifth).toMatchObject({ streak: 5, learned: false, due_at: log.id + 2 + 200 });
     expect(await good(id(0))).toMatchObject({ streak: 6, learned: true, due_at: null });
   });
 
@@ -186,11 +189,19 @@ describe("SRS decks", () => {
     expect((await next("lang")).outcomes).toMatchObject({ good: 30, streak: 1 });
     await good(id(0));
     expect((await next("lang")).outcomes).toMatchObject({ good: "learned", streak: 2, needed: 3 });
-    // Once missed, the card needs 6 in a row, and the last 3 are 50 cards apart.
+    // Once missed, the card needs 6 in a row; the review Goods are 50, 100 and 200 cards apart.
     await again(id(0));
     for (let i = 0; i < 2; i++) await good(id(0));
     expect((await next("lang")).outcomes).toMatchObject({ good: 50, streak: 2, needed: 6 });
-    for (let i = 0; i < 3; i++) await good(id(0));
+    await good(id(0));
+    expect((await next("lang")).outcomes).toMatchObject({ good: 100, streak: 3 });
+    await good(id(0));
+    expect((await next("lang")).outcomes).toMatchObject({ good: 200, streak: 4 });
+    // Again in review: back after 50, and the review Goods start over (100, 200, then learned).
+    await again(id(0));
+    expect((await next("lang")).outcomes).toMatchObject({ again: 50, good: 100, streak: 3 });
+    await good(id(0));
+    await good(id(0));
     expect((await next("lang")).outcomes).toMatchObject({ good: "learned", streak: 5, needed: 6 });
   });
 
@@ -231,6 +242,30 @@ describe("SRS decks", () => {
   it("rejects unknown cards and decks", async () => {
     await expect(good("missing")).rejects.toMatchObject({ status: 404 });
     await expect(next("missing")).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("a backlog of due cards", () => {
+  it("is mixed with new cards so it never comes as a long run", async () => {
+    await importCards(db, srsDeck(30));
+    // 8 cards came due together (e.g. a bunch of reviews); 22 are still new.
+    for (let i = 0; i < 8; i++) await db.insert(cardState).values({ cardId: id(i), dueAt: 0, seenAt: new Date() });
+    const sources: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const n = await next("lang");
+      sources.push(n.source!);
+      await good(n.card!.id);
+    }
+    // Every third card is new while due cards are waiting.
+    expect(sources.join(" ")).toBe("due due new due due new due due new due due new");
+  });
+
+  it("doesn't hold back a single due card", async () => {
+    await importCards(db, srsDeck(10));
+    await study("lang", 2);
+    await db.insert(cardState).values({ cardId: id(9), dueAt: 0, seenAt: new Date() });
+    // The count is at 2 (the third slot), but only one card is due, so it comes straight away.
+    expect(await next("lang")).toMatchObject({ source: "due", card: { id: id(9) } });
   });
 });
 

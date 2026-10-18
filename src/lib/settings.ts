@@ -66,12 +66,13 @@ export function afterAgain(s: Settings, streak: number, missed: boolean): { stre
 
 /**
  * What a Good that brings the streak to `streak` does: "learned", or how many cards later the card
- * comes back. Learning Goods double the gap (15, 30, …); a missed card's extra review Goods are
- * `review_gap` apart.
+ * comes back. Learning Goods double the gap (15, 30, …); a missed card's review Goods start
+ * `review_gap` apart and double too (50, 100, 200).
  */
 export function afterGood(s: Settings, streak: number, missed: boolean): number | "learned" {
   if (streak >= goodsNeeded(s, missed)) return "learned";
-  if (streak >= s.learned_after) return s.review_gap;
+  // Review Goods double the gap too: 50, 100, 200, …
+  if (streak >= s.learned_after) return s.review_gap * 2 ** (streak - s.learned_after);
   return s.good_gap * 2 ** Math.max(0, streak - 1);
 }
 

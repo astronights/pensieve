@@ -9,14 +9,15 @@ Two answers, no daily limit:
 - **Again**: the card comes back after 5 other cards, and its count of Goods in a row resets to 0.
 - **Good**: the card comes back after 15 cards, then 30 (the gap doubles each time). The third Good
   in a row marks it **learned**, and it isn't shown again.
-- **Missed cards** (Again at any point) aren't learned yet after those 3 Goods: they come back every
-  50 cards and need 3 more Goods in a row first. Again during that review keeps them there (back
-  after 50 cards) and the 3 review Goods start again.
+- **Missed cards** (Again at any point) aren't learned yet after those 3 Goods: they need 3 more Goods
+  in a row first, coming back after 50, then 100, then 200 cards. Again during that review keeps
+  them there (back after 50 cards) and the 3 review Goods start again.
 
 Cards are placed by how many answers ago they came up in the same deck (a deck and its sub-decks
 share one count; other decks don't move it), not by time, so you can study as many
 cards in a sitting as you like. Each turn shows the card being learned whose turn has come, else
-the next new card, else the next card being learned (early). The numbers are in Settings.
+the next new card, else the next card being learned (early). When several cards are due at once, every third card is a
+new one, so a batch of reviews doesn't arrive as one long run. The numbers are in Settings.
 
 Browse decks show unseen cards in random order: **Next** just marks a card seen, and **Again**
 puts it into the Again/Good loop above.

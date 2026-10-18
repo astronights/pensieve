@@ -27,8 +27,8 @@ const FIELDS: { key: keyof Settings; label: string; help: string; min: number; m
   },
   {
     key: "review_gap",
-    label: "Missed cards: review every",
-    help: "A card you've ever missed needs that many Goods in a row again, this many cards apart, before it's learned.",
+    label: "Missed cards: first review after",
+    help: "A card you've ever missed needs that many Goods in a row again before it's learned. The first comes this many cards later, then the gap doubles.",
     min: 1,
     max: 1000,
   },

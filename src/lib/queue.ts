@@ -153,6 +153,9 @@ const toDTO = ({ dueAt, ...r }: CardRow): CardDTO => ({
   bookmarked: r.bookmarked ?? false,
 });
 
+/** While several cards are due at once, every MIX_EVERY-th card shown is a new one (if any remain). */
+export const MIX_EVERY = 3;
+
 /** Answers given so far in a top-level deck and its sub-decks; cards come back by this count. */
 export async function groupPosition(db: DB, groupId: string): Promise<number> {
   const [row] = await db.select({ answers: decks.answers }).from(decks).where(eq(decks.id, groupId)).limit(1);
@@ -162,7 +165,8 @@ export async function groupPosition(db: DB, groupId: string): Promise<number> {
 /**
  * Picks the next card to show. There is no daily limit; cards are placed by how many answers
  * ago (in the same top-level deck) they were answered, not by time.
- * 1. A card being learned whose turn has come (Again/Good moved it N cards back), earliest first.
+ * 1. A card being learned whose turn has come (Again/Good moved it N cards back), earliest first;
+ *    when several are waiting, every third card is a new one instead so they don't come as a run.
  * 2. Otherwise a new card: import order (SRS decks) or random (browse decks).
  * 3. Otherwise the card being learned that is next in line, shown early.
  * Learned cards are never shown.
@@ -175,6 +179,17 @@ export async function nextCard(db: DB, deckId: string, filters: NextFilters = {}
   const extra = filterConditions(filters);
   // Where this deck's group (the top-level deck and its sub-decks) is in its answer count.
   const position = await groupPosition(db, summary.parent ?? summary.id);
+
+  /** Cards whose turn has come (counting stops at 2: we only need to know if there is a backlog). */
+  const dueCount = async () => {
+    const rows = await db
+      .select({ id: cards.id })
+      .from(cards)
+      .innerJoin(cardState, eq(cardState.cardId, cards.id))
+      .where(and(deckScope(deckId), isNotNull(cardState.dueAt), lte(cardState.dueAt, position), ...extra))
+      .limit(2);
+    return rows.length;
+  };
 
   const learningCard = async (dueOnly: boolean) => {
     const [row] = await db
@@ -194,17 +209,28 @@ export async function nextCard(db: DB, deckId: string, filters: NextFilters = {}
     return row;
   };
 
-  const pick = async (): Promise<Pick<NextResult, "card" | "source">> => {
-    const due = await learningCard(true);
-    if (due) return { card: toDTO(due), source: "due" };
-
-    const [fresh] = await db
+  const newCard = async () => {
+    const [row] = await db
       .select(cardColumns)
       .from(cards)
       .leftJoin(cardState, eq(cardState.cardId, cards.id))
       .where(and(deckScope(deckId), unseen, ...extra))
       .orderBy(...(deck.kind === "srs" ? [asc(cards.createdAt), asc(cards.id)] : [sql`random()`]))
       .limit(1);
+    return row;
+  };
+
+  const pick = async (): Promise<Pick<NextResult, "card" | "source">> => {
+    const due = await learningCard(true);
+    // With a backlog of due cards, every MIX_EVERY-th card is a new one, so a bunch of cards that
+    // came due together doesn't arrive as one long run.
+    if (due && position % MIX_EVERY === MIX_EVERY - 1 && (await dueCount()) > 1) {
+      const fresh = await newCard();
+      if (fresh) return { card: toDTO(fresh), source: "new" };
+    }
+    if (due) return { card: toDTO(due), source: "due" };
+
+    const fresh = await newCard();
     if (fresh) return { card: toDTO(fresh), source: "new" };
 
     const ahead = await learningCard(false);
