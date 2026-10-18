@@ -216,12 +216,15 @@ const COMMANDS: Record<VoicePhase, Record<string, VoiceCommand>> = {
 };
 
 /** A short utterance that is a command in this phase, else null (before the reveal: an answer). */
+/** Hesitations a verbatim transcript keeps ("um, show"). */
+const FILLERS = new Set(["um", "umm", "uh", "uhm", "er", "erm", "hmm", "ah", "oh", "okay", "ok", "so"]);
+
 export function parseCommand(text: string, phase: VoicePhase): VoiceCommand | null {
   const w = text
     .toLowerCase()
     .replace(/[^\p{L}\s]/gu, " ")
     .split(/\s+/)
-    .filter(Boolean);
+    .filter((x) => x && !FILLERS.has(x));
   if (w.length === 0 || w.length > 3) return null;
   // Before the reveal only the first word counts ("show answer"), so an answer like "TV show" is
   // still an answer; after it, the first command word anywhere wins ("that's right").
@@ -311,4 +314,17 @@ export function speechParts(md: string, latinLang: string): SpeechPart[] {
     .map((l) => l.trim())
     .filter((l) => l && !PINYIN.test(l))
     .map((text) => ({ text, lang: languageOfScript(text) ?? latinLang }));
+}
+
+/**
+ * What the user said, without the words the app was reading aloud at the time (the mic hears those
+ * too). "" if nothing of the user's own is left.
+ */
+export function stripEcho(heard: string, spoken: Set<string>): string {
+  if (spoken.size === 0) return heard.trim();
+  const kept = heard.split(/\s+/).filter((token) => {
+    const w = words(token);
+    return w.length > 0 && !w.every((x) => spoken.has(x));
+  });
+  return kept.join(" ");
 }

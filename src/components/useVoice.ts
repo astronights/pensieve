@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { type SpeechPart, words } from "@/lib/voice";
+import { type SpeechPart, stripEcho, words } from "@/lib/voice";
+import { GeminiListener, geminiSupported } from "./geminiListener";
 
 // The Web Speech API isn't in TypeScript's DOM types; this is the part we use.
 type Recognition = {
@@ -31,9 +32,15 @@ function recognitionCtor(): RecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-export const voiceSupported = () => recognitionCtor() !== null;
+/** Which speech recogniser to use: the browser's own, or Gemini through the app's server. */
+export type VoiceEngine = "browser" | "gemini";
+export const VOICE_ENGINE_KEY = "pensieve:voice-engine";
 
-export type VoiceStatus = "idle" | "listening" | "speaking";
+export const voiceSupported = (engine: VoiceEngine) =>
+  engine === "gemini" ? geminiSupported() : recognitionCtor() !== null;
+
+/** `thinking`: waiting for Gemini's transcript. */
+export type VoiceStatus = "idle" | "listening" | "thinking" | "speaking";
 
 /** The best installed voice for a language: exact match, then same language, then none (browser default). */
 function voiceFor(lang: string): SpeechSynthesisVoice | undefined {
@@ -61,26 +68,25 @@ function speakOne(part: SpeechPart): Promise<void> {
   });
 }
 
-/** Mostly words that are being (or were just) read aloud. */
-function isEcho({ words: spoken, until }: { words: Set<string>; until: number }, heard: string): boolean {
-  if (Date.now() > until) return false;
-  const w = words(heard);
-  return w.length === 0 || w.filter((x) => spoken.has(x)).length / w.length >= 0.6;
-}
-
 /**
- * Listens for speech (English) while `listen` is true: from `listenNow` until a silence ends it, and reads text
- * aloud with `speak`. The microphone stays on while speaking so you can interrupt; what it hears of
+ * Listens for speech while `listen` is true, and reads text aloud with `speak`. The browser engine
+ * listens from `listenNow` until a silence ends it (Chrome on Android dings on every start); the
+ * Gemini engine keeps the mic open and sends each utterance to the server to transcribe. The microphone stays on while speaking so you can interrupt; what it hears of
  * its own voice is ignored. Keeps the screen awake while `active`.
  */
 export function useVoice({
   active,
   listen,
+  engine,
+  languages,
   onHeard,
   onFatal,
 }: {
   active: boolean;
   listen: boolean;
+  engine: VoiceEngine;
+  /** Language hints for Gemini. */
+  languages: string[];
   onHeard: (alternatives: string[]) => void;
   onFatal: (message: string) => void;
 }) {
@@ -93,18 +99,53 @@ export function useVoice({
   const speech = useRef(0); // bumps to cancel what is being read
   /** Words being read aloud, until shortly after: the mic hears them too and they aren't the user. */
   const echo = useRef({ words: new Set<string>(), until: 0 });
-  const handlers = useRef({ onHeard, onFatal });
+  const handlers = useRef({ onHeard, onFatal, engine, languages });
   useLayoutEffect(() => {
-    handlers.current = { onHeard, onFatal };
+    handlers.current = { onHeard, onFatal, engine, languages };
   });
+  const thinking = useRef(false);
+  const gemini = useRef<GeminiListener | null>(null);
+
+  const refresh = useCallback(() => {
+    const open = handlers.current.engine === "gemini" ? !!gemini.current?.open : rec.current !== null;
+    setStatus(speaking.current ? "speaking" : thinking.current ? "thinking" : open ? "listening" : "idle");
+  }, []);
+
+  /** Passes on what the user said, minus the app's own voice if it was reading aloud at `at`. */
+  const heardSomething = useCallback((alternatives: string[], at: number) => {
+    const { words: spoken, until } = echo.current;
+    const own = alternatives
+      .map((a) => (at <= until ? stripEcho(a, spoken) : a.trim()))
+      .filter((a) => words(a).length > 0);
+    if (own.length) handlers.current.onHeard(own);
+  }, []);
   // `start` restarts itself from recognition events; this lets it refer to itself.
   const startRef = useRef(() => {});
 
   const start = useCallback(() => {
     if (restart.current) clearTimeout(restart.current);
     restart.current = null;
+    if (!want.current || document.hidden) return;
+    if (handlers.current.engine === "gemini") {
+      gemini.current ??= new GeminiListener({
+        onText: (text, at) => heardSomething([text], at),
+        onBusy: (busy) => {
+          thinking.current = busy;
+          refresh();
+        },
+        onFatal: (message) => {
+          want.current = false;
+          gemini.current?.stop();
+          handlers.current.onFatal(message);
+          refresh();
+        },
+        languages: () => handlers.current.languages,
+      });
+      void gemini.current.start().then(refresh);
+      return;
+    }
     const Ctor = recognitionCtor();
-    if (!Ctor || !want.current || rec.current || document.hidden) return;
+    if (!Ctor || rec.current) return;
     const r = new Ctor();
     r.lang = "en-US";
     // One long session: every restart makes Android show its microphone notification again.
@@ -128,7 +169,7 @@ export function useVoice({
             : t;
         }).filter(Boolean);
         previous = result[0]?.transcript.trim() ?? previous;
-        if (alts.length && !isEcho(echo.current, alts[0])) handlers.current.onHeard(alts);
+        heardSomething(alts, Date.now());
       }
     };
     r.onerror = (e) => {
@@ -141,7 +182,7 @@ export function useVoice({
     };
     r.onend = () => {
       if (rec.current === r) rec.current = null;
-      setStatus(speaking.current ? "speaking" : "idle");
+      refresh();
       if (errors.current >= 5) {
         want.current = false;
         handlers.current.onFatal("Voice recognition isn't working (it needs an internet connection).");
@@ -155,11 +196,11 @@ export function useVoice({
     rec.current = r;
     try {
       r.start();
-      if (!speaking.current) setStatus("listening");
+      refresh();
     } catch {
       rec.current = null;
     }
-  }, []);
+  }, [heardSomething, refresh]);
 
   useLayoutEffect(() => {
     startRef.current = start;
@@ -174,16 +215,23 @@ export function useVoice({
       r.onend = null;
       r.abort();
     }
-    setStatus(speaking.current ? "speaking" : "idle");
-  }, []);
+    gemini.current?.stop();
+    refresh();
+  }, [refresh]);
 
   useEffect(() => {
     want.current = listen;
     // Starting/stopping the recogniser is the external system this effect syncs with.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (listen) start();
     else stop();
   }, [listen, start, stop]);
+
+  // Switching engine: close the old one and start the new one.
+  useEffect(() => {
+    if (!want.current) return;
+    stop();
+    start();
+  }, [engine, start, stop]);
 
   useEffect(() => {
     const onVisible = () => (document.hidden ? stop() : start());
@@ -194,8 +242,8 @@ export function useVoice({
   const finishSpeaking = useCallback(() => {
     speaking.current = false;
     echo.current.until = Date.now() + 1500;
-    setStatus(rec.current ? "listening" : "idle");
-  }, []);
+    refresh();
+  }, [refresh]);
 
   /** Reads the parts in order; resolves true when finished, false if cancelled. */
   const speak = useCallback(

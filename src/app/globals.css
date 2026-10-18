@@ -418,3 +418,4 @@ main.study > header { flex-wrap: wrap; row-gap: 0.5rem; }
   .voice-dot.listening, .actions button.pending::after { animation: none; }
 }
 .voice-listen { min-height: 32px; padding: 0; font-size: inherit; font-weight: 600; }
+.voice-dot.thinking { background: var(--accent); animation: voice-pulse 0.8s ease-in-out infinite; }

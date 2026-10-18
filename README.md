@@ -115,8 +115,20 @@ neighbours (Iran/Iraq, Austria/Australia) stay wrong.
 Read aloud reads the question in the deck's language: from the script for non-Latin text, otherwise
 from the top-level deck's name ("Swedish" → Swedish), and it can be changed per deck. Answers are read
 in English, skipping pinyin; after a right spoken answer it just says "Correct.". You can talk over it
-at any time: the mic stays on while it reads, and what it hears of its own voice is ignored. Speech uses the browser's Web Speech API (Chrome on Android sends audio
-to Google for recognition, so it needs a connection). The logic is in `src/lib/voice.ts`.
+at any time: the mic stays on while it reads, and what it hears of its own voice is ignored.
+
+**Recognition engines** (Settings → Voice recognition, saved per device):
+
+- **Browser**: Chrome's built-in Web Speech API. Free, but on Android it dings and shows the mic
+  notification every time it starts listening, and it stops after a few seconds of silence.
+- **Gemini**: the app keeps the microphone open, cuts the audio into utterances when you pause
+  (`src/lib/audio.ts`), and `POST /api/transcribe` sends each clip (16 kHz WAV) to
+  [Gemini 3.5 Transcribe](https://ai.google.dev/gemini-api/docs/transcribe) in verbatim mode with
+  English and the deck's language as hints, not stored by Google. No dings, better with names and
+  other languages. Needs `GEMINI_API_KEY` in the app's environment (Vercel → Settings → Environment
+  Variables); without it the option is greyed out.
+
+The logic is in `src/lib/voice.ts`.
 
 ## Install on a phone
 
@@ -138,6 +150,7 @@ Every route requires the session cookie or `Authorization: Bearer $APP_PASSCODE`
 | `POST /api/review` `{card_id, answer: "again" \| "good"}` | updates `card_state` and appends `review_log` (browse: Good on a card not being learned only marks it seen) |
 | `POST /api/review` `{card_id, action: "bookmark", value}` | bookmark toggle |
 | `POST /api/import` `[cards]` or `{decks, cards}` | upserts by id and never touches progress; max 5000 cards per request |
+| `POST /api/transcribe` `{audio, mime_type, languages?}` | speech to text with Gemini (needs `GEMINI_API_KEY`); returns `{text}` |
 | `GET` / `PATCH /api/settings` (UI at `/settings`) | `again_gap` (5), `good_gap` (15), `learned_after` (3), `review_gap` (50) |
 
 Card shape: `{id, deck, front, back, tags?, category?, media?: [{type: image|video|audio, url, side: front|back}], meta?: {season?, ...}}`.

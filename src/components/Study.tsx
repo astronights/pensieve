@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { NextResult } from "@/lib/queue";
 import BackLink from "./BackLink";
 import { cardExtras } from "@/lib/card-extras";
 import Markdown from "./Markdown";
 import { MediaList } from "./Media";
-import { useVoice, voiceSupported } from "./useVoice";
+import { useVoice, VOICE_ENGINE_KEY, voiceSupported, type VoiceEngine } from "./useVoice";
 import {
   answerTargets,
   checkAnswer,
@@ -153,10 +153,13 @@ export default function Study({ deckId, category, season }: Props) {
     [stopCountdown],
   );
 
+  const [engine, setEngine] = useState<VoiceEngine>("browser");
   useEffect(() => {
-    const ok = voiceSupported();
+    const chosen: VoiceEngine = storage.get(VOICE_ENGINE_KEY) === "gemini" ? "gemini" : "browser";
+    const ok = voiceSupported(chosen);
     // Browser-only facts, read after hydration (same as the deck list's saved state).
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setEngine(chosen);
     setVoiceOk(ok);
     const saved = storage.get(VOICE_KEY) as VoiceMode | null;
     if (ok && saved && VOICE_MODES.includes(saved)) setVoiceState(saved);
@@ -300,7 +303,10 @@ export default function Study({ deckId, category, season }: Props) {
   const frontLang = langOverride ?? languageFromName(group) ?? "en-US";
   const phase: VoicePhase = !revealed ? "question" : verdict ? "verdict" : "answer";
 
+  const languages = useMemo(() => [...new Set(["en-US", frontLang])], [frontLang]);
   const { status, speak, cancelSpeech, listenNow } = useVoice({
+    engine,
+    languages,
     active: voice !== "off",
     // Listening starts with each card (and after each phrase); a silence ends it until a tap.
     listen: voice !== "off" && !!card,
@@ -397,11 +403,13 @@ export default function Study({ deckId, category, season }: Props) {
   const hint =
     status === "speaking"
       ? "Reading…"
-      : phase === "question"
-        ? "Say the answer or “show”"
-        : phase === "verdict"
-          ? "“Right” or “wrong” to change"
-          : "Say “good” or “again”";
+      : status === "thinking"
+        ? "Transcribing…"
+        : phase === "question"
+          ? "Say the answer or “show”"
+          : phase === "verdict"
+            ? "“Right” or “wrong” to change"
+            : "Say “good” or “again”";
 
   return (
     <main className="study">

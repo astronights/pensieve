@@ -7,6 +7,7 @@ import {
   parseCommand,
   plainText,
   speechParts,
+  stripEcho,
   words,
 } from "@/lib/voice";
 
@@ -115,9 +116,23 @@ describe("commands", () => {
     expect(parseCommand("the cat sat on the mat", "answer")).toBeNull();
   });
 
+  it("ignores hesitations", () => {
+    expect(parseCommand("Um, show.", "question")).toBe("show");
+    expect(parseCommand("uh good", "answer")).toBe("good");
+  });
+
   it("while a verdict shows: right/wrong flip it", () => {
     expect(parseCommand("that's right", "verdict")).toBe("good");
     expect(parseCommand("wrong", "verdict")).toBe("again");
+  });
+});
+
+describe("echo", () => {
+  it("drops the words being read aloud and keeps the user's", () => {
+    const spoken = new Set(words("hello, hi"));
+    expect(stripEcho("hello hi good", spoken)).toBe("good");
+    expect(stripEcho("Hello, hi.", spoken)).toBe("");
+    expect(stripEcho("the nile", new Set())).toBe("the nile");
   });
 });
 
