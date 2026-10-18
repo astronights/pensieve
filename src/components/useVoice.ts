@@ -42,6 +42,9 @@ export const voiceSupported = (engine: VoiceEngine) =>
 /** `thinking`: waiting for Gemini's transcript. */
 export type VoiceStatus = "idle" | "listening" | "thinking" | "speaking";
 
+/** Browser engine: how many times listening restarts by itself after a silence before it waits for a tap. */
+const SILENT_RESTARTS = 1;
+
 /** The best installed voice for a language: exact match, then same language, then none (browser default). */
 function voiceFor(lang: string): SpeechSynthesisVoice | undefined {
   const voices = window.speechSynthesis?.getVoices() ?? [];
@@ -104,6 +107,8 @@ export function useVoice({
     handlers.current = { onHeard, onFatal, engine, languages };
   });
   const thinking = useRef(false);
+  /** Silences in a row since the user last spoke or tapped (each restart after one dings). */
+  const silences = useRef(0);
   const gemini = useRef<GeminiListener | null>(null);
 
   const refresh = useCallback(() => {
@@ -182,16 +187,19 @@ export function useVoice({
     };
     r.onend = () => {
       if (rec.current === r) rec.current = null;
-      refresh();
       if (errors.current >= 5) {
         want.current = false;
         handlers.current.onFatal("Voice recognition isn't working (it needs an internet connection).");
-        return;
+        return refresh();
       }
       // Chrome on Android ends a session after each phrase and after a few seconds of silence, and
       // every new session plays a ding. Listen again after a phrase (an answer or command was just
-      // given), but not after a silence: then the user taps to listen (`listenNow`).
-      if (want.current && heard) restart.current = setTimeout(() => startRef.current(), 150);
+      // given), and after the first silence, but then wait for a tap (`listenNow`).
+      if (!want.current) return refresh();
+      // (Restarting keeps the status as it was, so the mic button doesn't flash up in between.)
+      if (heard) silences.current = 0;
+      else if (silences.current++ >= SILENT_RESTARTS) return refresh();
+      restart.current = setTimeout(() => startRef.current(), 150);
     };
     rec.current = r;
     try {
@@ -321,7 +329,10 @@ export function useVoice({
   }, [active]);
 
   /** Starts listening if voice is on and it isn't already (a new card, or "Tap to listen"). */
-  const listenNow = start;
+  const listenNow = useCallback(() => {
+    silences.current = 0;
+    start();
+  }, [start]);
 
   return { status, speak, cancelSpeech, listenNow };
 }

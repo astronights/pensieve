@@ -103,11 +103,12 @@ test("voice: spoken answers are checked and counted, with commands and read-alou
   await expect(page.locator(".actions .good.pending")).toBeVisible();
   await expect(card).toContainText("Which river is longest?", { timeout: 5000 });
 
-  // A silence ends listening and it doesn't restart by itself (each start dings on Android).
+  // A silence: listening restarts once by itself; after a second it waits for a tap (each start dings on Android).
   const starts = () => page.evaluate(() => (window as unknown as { __starts: number }).__starts);
-  await expect
-    .poll(() => page.evaluate(() => (window as unknown as { __silence: () => boolean }).__silence()))
-    .toBe(true);
+  const silence = () => page.evaluate(() => (window as unknown as { __silence: () => boolean }).__silence());
+  await expect.poll(silence).toBe(true);
+  await expect(page.getByRole("button", { name: "Tap to listen" })).toHaveCount(0);
+  await expect.poll(silence).toBe(true);
   const before = await starts();
   await page.getByRole("button", { name: "Tap to listen" }).click();
   expect(await starts()).toBe(before + 1);

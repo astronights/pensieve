@@ -534,48 +534,54 @@ export default function Study({ deckId, category, season }: Props) {
             )}
           </div>
 
-          {voice !== "off" && status === "idle" && (
-            // Listening stopped after a silence: a big target next to the answer buttons to resume.
-            <button type="button" className="listen-again" onClick={listenNow}>
-              <VoiceIcon mode="listen" />
-              Tap to listen
-            </button>
-          )}
-
-          {!revealed ? (
-            <button className="reveal" onClick={() => setRevealed(true)} disabled={busy}>
-              Show answer
-            </button>
-          ) : (
-            <div className="actions two">
-              <button
-                className={`again${counting && verdict && !verdict.ok ? " pending" : ""}`}
-                disabled={busy}
-                onClick={() => {
-                  stopCountdown();
-                  void answer("again");
-                }}
-              >
-                Again
-                {outcomes && <span className="interval">{cardsLater(outcomes.again)}</span>}
+          <div className="controls">
+            {!revealed ? (
+              <button className="reveal" onClick={() => setRevealed(true)} disabled={busy}>
+                Show answer
               </button>
+            ) : (
+              <div className="actions two">
+                <button
+                  className={`again${counting && verdict && !verdict.ok ? " pending" : ""}`}
+                  disabled={busy}
+                  onClick={() => {
+                    stopCountdown();
+                    void answer("again");
+                  }}
+                >
+                  Again
+                  {outcomes && <span className="interval">{cardsLater(outcomes.again)}</span>}
+                </button>
+                <button
+                  className={`good${counting && verdict?.ok ? " pending" : ""}`}
+                  disabled={busy}
+                  onClick={() => {
+                    stopCountdown();
+                    void answer("good");
+                  }}
+                >
+                  {browse ? "Next" : "Good"}
+                  {outcomes && !browse && (
+                    <span className="interval">
+                      {outcomes.good === "learned" ? "Learned ✓" : cardsLater(outcomes.good)}
+                    </span>
+                  )}
+                </button>
+              </div>
+            )}
+            {voice !== "off" && status === "idle" && (
+              // Listening stopped after a silence: a mic button next to the answer buttons resumes it.
               <button
-                className={`good${counting && verdict?.ok ? " pending" : ""}`}
-                disabled={busy}
-                onClick={() => {
-                  stopCountdown();
-                  void answer("good");
-                }}
+                type="button"
+                className="listen-again"
+                aria-label="Tap to listen"
+                title="Tap to listen"
+                onClick={listenNow}
               >
-                {browse ? "Next" : "Good"}
-                {outcomes && !browse && (
-                  <span className="interval">
-                    {outcomes.good === "learned" ? "Learned ✓" : cardsLater(outcomes.good)}
-                  </span>
-                )}
+                <VoiceIcon mode="listen" />
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </>
       )}
     </main>
