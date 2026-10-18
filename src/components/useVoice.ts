@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { SpeechPart } from "@/lib/voice";
+import { type SpeechPart, words } from "@/lib/voice";
 
 // The Web Speech API isn't in TypeScript's DOM types; this is the part we use.
 type Recognition = {
@@ -61,10 +61,17 @@ function speakOne(part: SpeechPart): Promise<void> {
   });
 }
 
+/** Mostly words that are being (or were just) read aloud. */
+function isEcho({ words: spoken, until }: { words: Set<string>; until: number }, heard: string): boolean {
+  if (Date.now() > until) return false;
+  const w = words(heard);
+  return w.length === 0 || w.filter((x) => spoken.has(x)).length / w.length >= 0.6;
+}
+
 /**
  * Listens for speech (English) in one long session while `listen` is true, and reads text
- * aloud with `speak`. The microphone is paused while speaking so it doesn't hear itself. Keeps
- * the screen awake while `active`.
+ * aloud with `speak`. The microphone stays on while speaking so you can interrupt; what it hears of
+ * its own voice is ignored. Keeps the screen awake while `active`.
  */
 export function useVoice({
   active,
@@ -84,6 +91,8 @@ export function useVoice({
   const errors = useRef(0);
   const restart = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speech = useRef(0); // bumps to cancel what is being read
+  /** Words being read aloud, until shortly after: the mic hears them too and they aren't the user. */
+  const echo = useRef({ words: new Set<string>(), until: 0 });
   const handlers = useRef({ onHeard, onFatal });
   useLayoutEffect(() => {
     handlers.current = { onHeard, onFatal };
@@ -95,7 +104,7 @@ export function useVoice({
     if (restart.current) clearTimeout(restart.current);
     restart.current = null;
     const Ctor = recognitionCtor();
-    if (!Ctor || !want.current || speaking.current || rec.current || document.hidden) return;
+    if (!Ctor || !want.current || rec.current || document.hidden) return;
     const r = new Ctor();
     r.lang = "en-US";
     // One long session: every restart makes Android show its microphone notification again.
@@ -117,7 +126,7 @@ export function useVoice({
             : t;
         }).filter(Boolean);
         previous = result[0]?.transcript.trim() ?? previous;
-        if (alts.length) handlers.current.onHeard(alts);
+        if (alts.length && !isEcho(echo.current, alts[0])) handlers.current.onHeard(alts);
       }
     };
     r.onerror = (e) => {
@@ -137,13 +146,12 @@ export function useVoice({
         return;
       }
       // Recognition can still stop after a long silence; start again (slower after errors).
-      if (want.current && !speaking.current)
-        restart.current = setTimeout(() => startRef.current(), 150 + errors.current * 1000);
+      if (want.current) restart.current = setTimeout(() => startRef.current(), 150 + errors.current * 1000);
     };
     rec.current = r;
     try {
       r.start();
-      setStatus("listening");
+      if (!speaking.current) setStatus("listening");
     } catch {
       rec.current = null;
     }
@@ -179,6 +187,12 @@ export function useVoice({
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [start, stop]);
 
+  const finishSpeaking = useCallback(() => {
+    speaking.current = false;
+    echo.current.until = Date.now() + 1500;
+    setStatus(rec.current ? "listening" : "idle");
+  }, []);
+
   /** Reads the parts in order; resolves true when finished, false if cancelled. */
   const speak = useCallback(
     async (parts: SpeechPart[]): Promise<boolean> => {
@@ -186,28 +200,26 @@ export function useVoice({
       const id = ++speech.current;
       window.speechSynthesis.cancel();
       speaking.current = true;
-      stop();
+      echo.current = { words: new Set(parts.flatMap((p) => words(p.text))), until: Infinity };
       setStatus("speaking");
       for (const part of parts) {
         if (speech.current !== id) return false;
         await speakOne(part);
       }
       if (speech.current !== id) return false;
-      speaking.current = false;
-      setStatus("idle");
-      start();
+      finishSpeaking();
       return true;
     },
-    [start, stop],
+    [finishSpeaking],
   );
 
+  /** Stops reading aloud (when the user interrupts). */
   const cancelSpeech = useCallback(() => {
+    if (!speaking.current) return;
     speech.current++;
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-    speaking.current = false;
-    setStatus("idle");
-    start();
-  }, [start]);
+    finishSpeaking();
+  }, [finishSpeaking]);
 
   // Stop everything when voice is switched off or the page goes away.
   useEffect(() => {

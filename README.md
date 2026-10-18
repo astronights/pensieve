@@ -109,7 +109,8 @@ punctuation, "the/a/to" and small misspellings are ignored. Answers are heard in
 
 Read aloud reads the question in the deck's language: from the script for non-Latin text, otherwise
 from the top-level deck's name ("Swedish" → Swedish), and it can be changed per deck. Answers are read
-in English, skipping pinyin. Speech uses the browser's Web Speech API (Chrome on Android sends audio
+in English, skipping pinyin; after a right spoken answer it just says "Correct.". You can talk over it
+at any time: the mic stays on while it reads, and what it hears of its own voice is ignored. Speech uses the browser's Web Speech API (Chrome on Android sends audio
 to Google for recognition, so it needs a connection). The logic is in `src/lib/voice.ts`.
 
 ## Install on a phone

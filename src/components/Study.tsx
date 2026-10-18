@@ -300,7 +300,7 @@ export default function Study({ deckId, category, season }: Props) {
   const frontLang = langOverride ?? languageFromName(group) ?? "en-US";
   const phase: VoicePhase = !revealed ? "question" : verdict ? "verdict" : "answer";
 
-  const { status, speak } = useVoice({
+  const { status, speak, cancelSpeech } = useVoice({
     active: voice !== "off",
     // Kept on between cards (what's heard while an answer saves is ignored): restarting the mic
     // brings up Android's microphone notification each time.
@@ -337,10 +337,12 @@ export default function Study({ deckId, category, season }: Props) {
     if (command === "repeat") return void speak(revealed ? back() : front());
     if (command === "more") return void speak(more());
     if (phase === "question") {
+      cancelSpeech(); // answering while the question is read out
       if (command !== "show")
         setVerdict({ ok: checkAnswer(alts, answerTargets(card.back, extras.notes)), heard: alts[0] });
       setRevealed(true);
     } else if (command === "good" || command === "again") {
+      cancelSpeech();
       stopCountdown();
       void answer(command);
     }
@@ -364,8 +366,15 @@ export default function Study({ deckId, category, season }: Props) {
     void (async () => {
       const v = latest.current.verdict;
       if (latest.current.voice === "read") {
-        const said = v ? [{ text: v.ok ? "Correct." : "Not quite.", lang: "en-US" }] : [];
-        if (!(await speak([...said, ...back()])) || cancelled) return;
+        // A right answer was just said, so it isn't read back; a wrong one is followed by the answer.
+        const parts = !v
+          ? back()
+          : v.ok
+            ? [{ text: "Correct.", lang: "en-US" }]
+            : [{ text: "Not quite.", lang: "en-US" }, ...back()];
+        await speak(parts);
+        // Interrupted by "repeat"/"more" still counts down; a new card cancels.
+        if (cancelled) return;
       }
       if (!v || cancelled || latest.current.voice === "off") return;
       setCounting(true);

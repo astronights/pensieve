@@ -30,13 +30,24 @@ async function fakeSpeech(page: Page) {
       r.onresult?.({ resultIndex: r.results.length - 1, results: r.results });
       return true;
     };
+    // Reading takes `__ttsMs`; cancel() ends what is being read, as browsers do.
+    w.__ttsMs = 10;
+    const pending = new Set<() => void>();
     Object.defineProperty(window, "speechSynthesis", {
       value: {
         speak(u: SpeechSynthesisUtterance) {
           (w.__spoken as { text: string; lang: string }[]).push({ text: u.text, lang: u.lang });
-          setTimeout(() => u.onend?.(new Event("end") as SpeechSynthesisEvent), 10);
+          const end = () => {
+            pending.delete(end);
+            clearTimeout(timer);
+            u.onend?.(new Event("end") as SpeechSynthesisEvent);
+          };
+          const timer = setTimeout(end, w.__ttsMs as number);
+          pending.add(end);
         },
-        cancel() {},
+        cancel() {
+          for (const end of [...pending]) end();
+        },
         getVoices: () => [],
       },
     });
@@ -98,12 +109,32 @@ test("voice: spoken answers are checked and counted, with commands and read-alou
   await expect(page.getByRole("combobox", { name: "Read questions in" })).toHaveValue("sv-SE");
   const spoken = () => page.evaluate(() => (window as unknown as { __spoken: unknown[] }).__spoken);
   await expect.poll(spoken).toContainEqual({ text: "Which river is longest?", lang: "sv-SE" });
+  // A right answer isn't read back: just "Correct."
   await say(page, "nile");
   await expect.poll(spoken).toContainEqual({ text: "Correct.", lang: "en-US" });
-  await expect.poll(spoken).toContainEqual({ text: "The Nile", lang: "en-US" });
+  await expect(card).toContainText("hej", { timeout: 5000 });
+  expect(await spoken()).not.toContainEqual({ text: "The Nile", lang: "en-US" });
+
+  // You can answer while it is still reading; its own voice picked up by the mic is ignored.
+  await page.evaluate(() => ((window as unknown as { __ttsMs: number }).__ttsMs = 60_000));
+  await say(page, "show");
+  await expect.poll(spoken).toContainEqual({ text: "hello, hi", lang: "en-US" });
+  await say(page, "hello hi"); // echo of the answer being read
+  await expect(page.locator(".voice-dot.speaking")).toBeVisible();
+  await say(page, "good"); // interrupts
+  await expect(card).toContainText("Which river is longest?");
+  await say(page, "the amazon");
+  await expect(card.locator(".verdict.wrong")).toBeVisible();
+  await expect.poll(spoken).toContainEqual({ text: "Not quite.", lang: "en-US" });
+  await say(page, "wrong");
+  // "hej" is learned by now, so the river card comes straight back, its streak reset.
+  await expect(card.locator(".verdict")).toHaveCount(0);
+  await expect(card).toContainText("Which river is longest?");
+  await expect(card.locator(".dot.learn.on")).toHaveCount(0);
+  // The mic was never restarted, even while reading aloud.
+  expect(await page.evaluate(() => (window as unknown as { __starts: number }).__starts)).toBe(1);
 
   // "stop" turns voice off.
-  await expect(card).toContainText("hej", { timeout: 5000 });
   await say(page, "stop");
   await expect(page.getByRole("button", { name: /^Voice off/ })).toBeVisible();
 });
