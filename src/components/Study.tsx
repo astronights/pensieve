@@ -446,13 +446,7 @@ export default function Study({ deckId, category, season }: Props) {
             <span className={`voice-dot ${status}`} aria-hidden="true" />
             <span className="voice-hint">
               <strong>{voice === "read" ? "Read aloud" : "Voice"}</strong> ·{" "}
-              {status === "idle" ? (
-                <button type="button" className="link-button voice-listen" onClick={listenNow}>
-                  Tap to listen
-                </button>
-              ) : (
-                hint
-              )}
+              {status === "idle" ? "Not listening" : hint}
             </span>
             {voice === "read" && (
               <select
@@ -539,6 +533,14 @@ export default function Study({ deckId, category, season }: Props) {
               </>
             )}
           </div>
+
+          {voice !== "off" && status === "idle" && (
+            // Listening stopped after a silence: a big target next to the answer buttons to resume.
+            <button type="button" className="listen-again" onClick={listenNow}>
+              <VoiceIcon mode="listen" />
+              Tap to listen
+            </button>
+          )}
 
           {!revealed ? (
             <button className="reveal" onClick={() => setRevealed(true)} disabled={busy}>
