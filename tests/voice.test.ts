@@ -23,6 +23,23 @@ describe("answer checking", () => {
     expect(right("romeo and juliet", "**Romeo** and **Juliet**")).toBe(true);
   });
 
+  it("with OR, takes the bold part of either side on its own", () => {
+    const back = "**Mahatma Gandhi** OR **Bapu**";
+    expect(right("gandhi", back)).toBe(false);
+    expect(right("mahatma gandhi", back)).toBe(true);
+    expect(right("bapu", back)).toBe(true);
+    expect(answerTargets(back)).toEqual([["mahatma gandhi"], ["bapu"]]);
+    expect(right("amazon", "The **Nile** or the **Amazon**")).toBe(true);
+    expect(right("nile", "**Nile or Amazon**")).toBe(true);
+    // Both bold parts on one side are still both needed.
+    expect(right("romeo", "**Romeo** and **Juliet** or **Tristan** and **Isolde**")).toBe(false);
+    expect(right("tristan and isolde", "**Romeo** and **Juliet** or **Tristan** and **Isolde**")).toBe(true);
+    // A side without bold counts as a whole.
+    expect(right("trinidad and tobago", "**Tobago** or Trinidad and Tobago")).toBe(true);
+    // Without bold, "or" separates meanings too.
+    expect(right("automobile", "car or automobile")).toBe(true);
+  });
+
   it("takes any one meaning when nothing is bold", () => {
     expect(right("sweatshirt", "hoodie, sweatshirt")).toBe(true);
     expect(right("hoodie", "Hoodie; sweatshirt")).toBe(true);

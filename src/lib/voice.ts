@@ -76,9 +76,11 @@ export function plainText(md: string): string {
 
 /**
  * What counts as a right answer. Each alternative is a list of phrases that must all be said.
- * - Bold text in the answer: every bold part must be said ("The **Nile**" → "nile").
- * - Otherwise any one meaning: lines and parts split by , ; / ("hoodie, sweatshirt"), with or
- *   without a part in brackets ("to eat (verb)").
+ * - Bold text in the answer: every bold part must be said ("The **Nile**" → "nile"). An answer
+ *   with "or" gives a choice: the bold part(s) of either side ("**Gandhi** OR **Bapu**" takes
+ *   either name, not both); a side without bold counts as a whole.
+ * - Otherwise any one meaning: lines and parts split by , ; / or "or" ("hoodie, sweatshirt"), with
+ *   or without a part in brackets ("to eat (verb)").
  * - Plus anything after "Accept:" in the notes.
  */
 export function answerTargets(back: string, notes?: string | null): string[][] {
@@ -91,18 +93,32 @@ export function answerTargets(back: string, notes?: string | null): string[][] {
         out.push(clean);
     }
   };
-  const bold = [...back.matchAll(/\*\*(.+?)\*\*|__(.+?)__/g)].map((m) => plainText(m[1] ?? m[2]));
-  if (bold.length > 0) {
-    add(bold);
+  const BOLD = /\*\*(.+?)\*\*|__(.+?)__/g;
+  const OR = /\s+or\s+/i;
+  const boldOf = (text: string) => [...text.matchAll(BOLD)].map((m) => plainText(m[1] ?? m[2]));
+  if (boldOf(back).length > 0) {
+    // "**A or B**" is the same choice as "**A** or **B**".
+    const sides = back
+      .replace(BOLD, (_, a: string | undefined, b: string | undefined) =>
+        (a ?? b ?? "")
+          .split(OR)
+          .map((x) => `**${x}**`)
+          .join(" or "),
+      )
+      .split(OR);
+    for (const side of sides) {
+      const bold = boldOf(side);
+      add(bold.length > 0 ? bold : [plainText(side)]);
+    }
   } else {
-    for (const part of plainText(back).split(/[\n,;/]/)) {
+    for (const part of plainText(back).split(/[\n,;/]|\s+or\s+/i)) {
       add([part]);
       const unbracketed = part.replace(/\([^)]*\)|\[[^\]]*\]/g, " ");
       if (unbracketed !== part) add([unbracketed]);
     }
   }
   for (const m of (notes ?? "").matchAll(/accept:\s*([^\n]+)/gi)) {
-    for (const alt of plainText(m[1]).split(/[,;/]|\bor\b/)) add([alt]);
+    for (const alt of plainText(m[1]).split(/[,;/]|\bor\b/i)) add([alt]);
   }
   return out;
 }
