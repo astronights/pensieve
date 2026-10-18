@@ -30,6 +30,8 @@ installs as an app on Android and iOS.
   extra info lines that appear once the answer is shown.
 - **Browse decks.** Go through cards in random order with **Next**, and send the ones you miss into
   the Again/Good loop.
+- **Hands-free voice mode.** Say your answer and it's checked against the card (✓/✗), then counted
+  as Good or Again after 2 seconds unless you say "right" or "wrong". Optionally reads each card aloud.
 - **Phone first.** Installable PWA, light and dark themes, landscape layout, and the next card is
   prefetched so answers feel instant.
 - **Import anything.** A JSON import API that updates content without ever resetting progress, plus
@@ -87,6 +89,28 @@ first deploy. Only production deploys do this: preview builds (one per pull requ
 same database, so they skip migrations and a schema change lands only when it is merged. Set `SEED_DEMO=1` to also load the 20 demo cards (CI does this for the end-to-end tests). If `DATABASE_URL_UNPOOLED` is set it is used for migrations.
 
 The app connects with node-postgres (`pg`) everywhere: Neon, local Postgres and CI use the same driver.
+
+## Voice
+
+Tap the 🎤 button on the study screen to cycle **Off → Voice answers → Read aloud + voice answers**
+(remembered on the device). The screen stays on while voice is on.
+
+| When | Say | Does |
+|---|---|---|
+| Question showing | *your answer* | Checks it, reveals the card with ✓ or ✗, and counts Good or Again after 2 seconds |
+| | "show" / "answer" | Reveals without checking (when you don't know) |
+| ✓ / ✗ showing | "right" / "wrong" | Overrules the check and answers straight away |
+| Answer showing | "good" / "yes", "again" / "no" | Answers |
+| Any time | "repeat", "more", "stop" | Reads the card again, reads the notes and explanation, turns voice off |
+
+An answer is right when it contains the **bold** part of the card's answer, or else any one of its
+meanings (split by `,` `;` `/` or lines), or anything after "Accept:" in the notes. Case, accents,
+punctuation, "the/a/to" and small misspellings are ignored. Answers are heard in English.
+
+Read aloud reads the question in the deck's language: from the script for non-Latin text, otherwise
+from the top-level deck's name ("Swedish" → Swedish), and it can be changed per deck. Answers are read
+in English, skipping pinyin. Speech uses the browser's Web Speech API (Chrome on Android sends audio
+to Google for recognition, so it needs a connection). The logic is in `src/lib/voice.ts`.
 
 ## Install on a phone
 

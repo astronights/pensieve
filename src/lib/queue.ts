@@ -41,7 +41,8 @@ export type CardDTO = {
 };
 
 export type NextResult = {
-  deck: { id: string; name: string; kind: DeckKind };
+  /** `group` is the name of the top-level deck (the deck's own name if it is one). */
+  deck: { id: string; name: string; kind: DeckKind; group: string };
   card: CardDTO | null;
   /** due: its turn came up; new: never seen; ahead: nothing else left, so shown early. */
   source: "due" | "new" | "ahead" | null;
@@ -174,7 +175,11 @@ export async function groupPosition(db: DB, groupId: string): Promise<number> {
 export async function nextCard(db: DB, deckId: string, filters: NextFilters = {}): Promise<NextResult> {
   const [summary] = await listDecks(db, deckId);
   if (!summary) throw notFound(`Deck not found: ${deckId}`);
-  const deck = { id: summary.id, name: summary.name, kind: summary.kind };
+  const group = summary.parent
+    ? ((await db.select({ name: decks.name }).from(decks).where(eq(decks.id, summary.parent)).limit(1))[0]?.name ??
+      summary.name)
+    : summary.name;
+  const deck = { id: summary.id, name: summary.name, kind: summary.kind, group };
   const counts = toCounts(summary);
   const extra = filterConditions(filters);
   // Where this deck's group (the top-level deck and its sub-decks) is in its answer count.

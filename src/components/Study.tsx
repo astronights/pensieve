@@ -1,12 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { NextResult } from "@/lib/queue";
 import BackLink from "./BackLink";
 import { cardExtras } from "@/lib/card-extras";
 import Markdown from "./Markdown";
 import { MediaList } from "./Media";
+import { useVoice, voiceSupported } from "./useVoice";
+import {
+  answerTargets,
+  checkAnswer,
+  languageFromName,
+  parseCommand,
+  SPOKEN_LANGUAGES,
+  speechParts,
+  type VoiceCommand,
+  type VoicePhase,
+} from "@/lib/voice";
 
 type Props = { deckId: string; category?: string; season?: string };
 type Counts = NextResult["counts"];
@@ -15,6 +26,69 @@ type Counts = NextResult["counts"];
 const LONG_TEXT = 80;
 
 type Answer = "again" | "good";
+
+/** Voice: off, answers by voice, or also read each card aloud. */
+type VoiceMode = "off" | "listen" | "read";
+const VOICE_MODES: VoiceMode[] = ["off", "listen", "read"];
+const VOICE_KEY = "pensieve:voice";
+const langKey = (group: string) => `pensieve:voice-lang:${group}`;
+/** How long a spoken answer's ✓/✗ shows before it counts, so a misheard answer can be corrected. */
+export const VERDICT_MS = 2000;
+
+const VOICE_LABEL: Record<VoiceMode, string> = {
+  off: "Voice off",
+  listen: "Voice answers",
+  read: "Read aloud + voice answers",
+};
+
+const storage = {
+  get(key: string) {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set(key: string, value: string | null) {
+    try {
+      if (value === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, value);
+    } catch {
+      // Private mode etc.: the choice just isn't remembered.
+    }
+  },
+};
+
+function VoiceIcon({ mode }: { mode: VoiceMode }) {
+  const mic = (
+    <>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+    </>
+  );
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      {mode === "read" ? (
+        <>
+          <path d="M3 9v6h4l5 4V5L7 9H3z" />
+          <path d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12" />
+        </>
+      ) : (
+        mic
+      )}
+      {mode === "off" && <path d="M4 4l16 16" />}
+    </svg>
+  );
+}
 
 const cardsLater = (n: number) => `${n} card${n === 1 ? "" : "s"} later`;
 
@@ -56,6 +130,37 @@ export default function Study({ deckId, category, season }: Props) {
   const [revealed, setRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [voice, setVoiceState] = useState<VoiceMode>("off");
+  const [voiceOk, setVoiceOk] = useState(false);
+  const [langOverride, setLangOverride] = useState<string | null>(null);
+  /** What was heard as an answer to this card and whether it was right; `counting` once the 2s run. */
+  const [verdict, setVerdict] = useState<{ ok: boolean; heard: string } | null>(null);
+  const [counting, setCounting] = useState(false);
+  const countdown = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stopCountdown = useCallback(() => {
+    if (countdown.current) clearTimeout(countdown.current);
+    countdown.current = null;
+    setCounting(false);
+  }, []);
+
+  const setVoice = useCallback(
+    (mode: VoiceMode) => {
+      setVoiceState(mode);
+      if (mode === "off") stopCountdown();
+      storage.set(VOICE_KEY, mode === "off" ? null : mode);
+    },
+    [stopCountdown],
+  );
+
+  useEffect(() => {
+    const ok = voiceSupported();
+    // Browser-only facts, read after hydration (same as the deck list's saved state).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVoiceOk(ok);
+    const saved = storage.get(VOICE_KEY) as VoiceMode | null;
+    if (ok && saved && VOICE_MODES.includes(saved)) setVoiceState(saved);
+  }, []);
 
   // Saves are chained so a prefetch never runs before the previous answer is stored.
   const lastSave = useRef<Promise<unknown>>(Promise.resolve());
@@ -75,6 +180,8 @@ export default function Study({ deckId, category, season }: Props) {
   const show = useCallback((next: NextResult) => {
     setData(next);
     setRevealed(false);
+    setVerdict(null);
+    setCounting(false);
     setView((v) => v + 1);
   }, []);
 
@@ -184,22 +291,157 @@ export default function Study({ deckId, category, season }: Props) {
   const outcomes = data?.outcomes;
   const extras = cardExtras(card?.meta);
 
+  // ---- Voice ----
+  const group = data?.deck.group ?? "";
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLangOverride(group ? storage.get(langKey(group)) : null);
+  }, [group]);
+  const frontLang = langOverride ?? languageFromName(group) ?? "en-US";
+  const phase: VoicePhase = !revealed ? "question" : verdict ? "verdict" : "answer";
+
+  const { status, speak } = useVoice({
+    active: voice !== "off",
+    listen: voice !== "off" && !!card && !busy,
+    onHeard: (alts) => latest.current.onHeard(alts),
+    onFatal: (message) => {
+      setError(message);
+      setVoice("off");
+    },
+  });
+
+  // A new card cancels the previous card's countdown (`show` resets `counting`).
+  useEffect(
+    () => () => {
+      if (countdown.current) clearTimeout(countdown.current);
+      countdown.current = null;
+    },
+    [view],
+  );
+
+  const front = useCallback(() => (card ? speechParts(card.front, frontLang) : []), [card, frontLang]);
+  const back = useCallback(() => (card ? speechParts(card.back, "en-US") : []), [card]);
+  const more = useCallback(
+    () => [extras.notes, extras.explanation].flatMap((t) => (t ? speechParts(t, "en-US") : [])),
+    [extras.notes, extras.explanation],
+  );
+
+  // Latest values for speech callbacks, which fire long after the render that set them up.
+  const latest = useRef({ onHeard: (() => {}) as (alts: string[]) => void, voice, answer, verdict });
+  const onHeard = (alts: string[]) => {
+    if (!card || busy) return;
+    const command = alts.map((a) => parseCommand(a, phase)).find(Boolean) as VoiceCommand | undefined;
+    if (command === "stop") return setVoice("off");
+    if (command === "repeat") return void speak(revealed ? back() : front());
+    if (command === "more") return void speak(more());
+    if (phase === "question") {
+      if (command !== "show")
+        setVerdict({ ok: checkAnswer(alts, answerTargets(card.back, extras.notes)), heard: alts[0] });
+      setRevealed(true);
+    } else if (command === "good" || command === "again") {
+      stopCountdown();
+      void answer(command);
+    }
+  };
+  useLayoutEffect(() => {
+    latest.current = { onHeard, voice, answer, verdict };
+  });
+
+  // Read each new card's question aloud.
+  const reading = voice === "read";
+  useEffect(() => {
+    if (reading && !revealed) void speak(front());
+    // Only when a card is shown or reading is switched on, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, reading]);
+
+  // On reveal: read the answer (in read mode), then start the countdown on a spoken answer.
+  useEffect(() => {
+    if (!revealed) return;
+    let cancelled = false;
+    void (async () => {
+      const v = latest.current.verdict;
+      if (latest.current.voice === "read") {
+        const said = v ? [{ text: v.ok ? "Correct." : "Not quite.", lang: "en-US" }] : [];
+        if (!(await speak([...said, ...back()])) || cancelled) return;
+      }
+      if (!v || cancelled || latest.current.voice === "off") return;
+      setCounting(true);
+      countdown.current = setTimeout(() => {
+        countdown.current = null;
+        void latest.current.answer(v.ok ? "good" : "again");
+      }, VERDICT_MS);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealed, view]);
+
+  const hint =
+    status === "speaking"
+      ? "Reading…"
+      : phase === "question"
+        ? "Say the answer or “show”"
+        : phase === "verdict"
+          ? "“Right” or “wrong” to change"
+          : "Say “good” or “again”";
+
   return (
     <main className="study">
       <header>
         <BackLink />
-        {data && (
-          <span className="counts" aria-label="learned, in progress and unseen">
-            <span className="chip learned" title="learned">
-              {data.counts.learned}
+        <span className="header-actions">
+          {voiceOk && (
+            <button
+              type="button"
+              className={`icon-button voice-button${voice !== "off" ? " on" : ""}`}
+              aria-label={`${VOICE_LABEL[voice]} (tap to change)`}
+              title={VOICE_LABEL[voice]}
+              onClick={() => setVoice(VOICE_MODES[(VOICE_MODES.indexOf(voice) + 1) % VOICE_MODES.length])}
+            >
+              <VoiceIcon mode={voice} />
+            </button>
+          )}
+          {data && (
+            <span className="counts" aria-label="learned, in progress and unseen">
+              <span className="chip learned" title="learned">
+                {data.counts.learned}
+              </span>
+              <span className="chip learning" title="in progress">
+                {data.counts.learning}
+              </span>
+              <span className="chip unseen" title="unseen">
+                {data.counts.new}
+              </span>
             </span>
-            <span className="chip learning" title="in progress">
-              {data.counts.learning}
+          )}
+        </span>
+        {voice !== "off" && (
+          <div className="voice-bar" aria-live="polite">
+            <span className={`voice-dot ${status}`} aria-hidden="true" />
+            <span className="voice-hint">
+              <strong>{voice === "read" ? "Read aloud" : "Voice"}</strong> · {hint}
             </span>
-            <span className="chip unseen" title="unseen">
-              {data.counts.new}
-            </span>
-          </span>
+            {voice === "read" && (
+              <select
+                aria-label="Read questions in"
+                value={frontLang}
+                onChange={(e) => {
+                  const lang = e.target.value;
+                  const auto = languageFromName(group) ?? "en-US";
+                  setLangOverride(lang === auto ? null : lang);
+                  storage.set(langKey(group), lang === auto ? null : lang);
+                }}
+              >
+                {SPOKEN_LANGUAGES.map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         )}
       </header>
 
@@ -235,6 +477,11 @@ export default function Study({ deckId, category, season }: Props) {
             {revealed && (
               <>
                 <hr ref={answerRef} />
+                {verdict && (
+                  <p className={`verdict ${verdict.ok ? "ok" : "wrong"}`}>
+                    {verdict.ok ? "✓" : "✗"} <span className="muted">heard</span> “{verdict.heard}”
+                  </p>
+                )}
                 <Markdown
                   className={`card-text md answer${card.back.length > LONG_TEXT ? " long" : ""}`}
                   text={card.back}
@@ -268,11 +515,25 @@ export default function Study({ deckId, category, season }: Props) {
             </button>
           ) : (
             <div className="actions two">
-              <button className="again" disabled={busy} onClick={() => answer("again")}>
+              <button
+                className={`again${counting && verdict && !verdict.ok ? " pending" : ""}`}
+                disabled={busy}
+                onClick={() => {
+                  stopCountdown();
+                  void answer("again");
+                }}
+              >
                 Again
                 {outcomes && <span className="interval">{cardsLater(outcomes.again)}</span>}
               </button>
-              <button className="good" disabled={busy} onClick={() => answer("good")}>
+              <button
+                className={`good${counting && verdict?.ok ? " pending" : ""}`}
+                disabled={busy}
+                onClick={() => {
+                  stopCountdown();
+                  void answer("good");
+                }}
+              >
                 {browse ? "Next" : "Good"}
                 {outcomes && !browse && (
                   <span className="interval">
