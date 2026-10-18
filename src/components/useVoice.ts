@@ -36,6 +36,22 @@ function recognitionCtor(): RecognitionCtor | null {
 export type VoiceEngine = "browser" | "gemini";
 export const VOICE_ENGINE_KEY = "pensieve:voice-engine";
 
+/** The user's English, for recognising their accent (both engines). */
+export const ACCENTS = [
+  { code: "en-US", label: "US" },
+  { code: "en-GB", label: "UK" },
+  { code: "en-IN", label: "India" },
+] as const;
+export const VOICE_ACCENT_KEY = "pensieve:voice-accent";
+export const savedAccent = (): string => {
+  try {
+    const saved = localStorage.getItem(VOICE_ACCENT_KEY);
+    return ACCENTS.some((a) => a.code === saved) ? saved! : "en-US";
+  } catch {
+    return "en-US";
+  }
+};
+
 export const voiceSupported = (engine: VoiceEngine) =>
   engine === "gemini" ? geminiSupported() : recognitionCtor() !== null;
 
@@ -91,7 +107,7 @@ export function useVoice({
   /** False while what's heard would be ignored anyway, so Gemini isn't asked to transcribe it. */
   accepting?: boolean;
   engine: VoiceEngine;
-  /** Language hints for Gemini. */
+  /** Language hints: the user's English first (the browser engine listens in that one), then the deck's. */
   languages: string[];
   onHeard: (alternatives: string[]) => void;
   onFatal: (message: string) => void;
@@ -156,7 +172,7 @@ export function useVoice({
     const Ctor = recognitionCtor();
     if (!Ctor || rec.current) return;
     const r = new Ctor();
-    r.lang = "en-US";
+    r.lang = handlers.current.languages[0] ?? "en-US";
     // One long session: every restart makes Android show its microphone notification again.
     r.continuous = true;
     r.interimResults = false;

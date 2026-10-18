@@ -118,6 +118,9 @@ from the top-level deck's name ("Swedish" → Swedish), and it can be changed pe
 in English, skipping pinyin; after a right spoken answer it just says "Correct.". You can talk over it
 at any time: the mic stays on while it reads, and what it hears of its own voice is ignored.
 
+**Your accent** (Settings: US / UK / India) sets the English both engines listen for, so an Indian or
+British accent is understood better.
+
 **Recognition engines** (Settings → Voice recognition, saved per device):
 
 - **Browser**: Chrome's built-in Web Speech API. Free, but on Android it dings and shows the mic
@@ -125,7 +128,8 @@ at any time: the mic stays on while it reads, and what it hears of its own voice
 - **Gemini**: the app keeps the microphone open, cuts the audio into utterances when you pause
   (`src/lib/audio.ts`), and `POST /api/transcribe` sends each clip (16 kHz WAV) to
   [Gemini 3.5 Transcribe](https://ai.google.dev/gemini-api/docs/transcribe) in verbatim mode with
-  English and the deck's language as hints, not stored by Google. No dings, better with names and
+  your English accent and the deck's language as hints and the command words as vocabulary, not
+  stored by Google. No dings, better with names and
   other languages. Needs `GEMINI_API_KEY` in the app's environment (Vercel → Settings → Environment
   Variables); without it the option is greyed out.
 

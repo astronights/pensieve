@@ -7,7 +7,7 @@ import BackLink from "./BackLink";
 import { cardExtras } from "@/lib/card-extras";
 import Markdown from "./Markdown";
 import { MediaList } from "./Media";
-import { useVoice, VOICE_ENGINE_KEY, voiceSupported, type VoiceEngine } from "./useVoice";
+import { savedAccent, useVoice, VOICE_ENGINE_KEY, voiceSupported, type VoiceEngine } from "./useVoice";
 import {
   answerTargets,
   checkAnswer,
@@ -159,12 +159,14 @@ export default function Study({ deckId, category, season }: Props) {
   );
 
   const [engine, setEngine] = useState<VoiceEngine>("browser");
+  const [accent, setAccent] = useState("en-US");
   useEffect(() => {
     const chosen: VoiceEngine = storage.get(VOICE_ENGINE_KEY) === "gemini" ? "gemini" : "browser";
     const ok = voiceSupported(chosen);
     // Browser-only facts, read after hydration (same as the deck list's saved state).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setEngine(chosen);
+    setAccent(savedAccent());
     setVoiceOk(ok);
     const saved = storage.get(VOICE_KEY) as VoiceMode | null;
     if (ok && saved && VOICE_MODES.includes(saved)) setVoiceState(saved);
@@ -309,7 +311,7 @@ export default function Study({ deckId, category, season }: Props) {
   const frontLang = langOverride ?? languageFromName(group) ?? "en-US";
   const phase: VoicePhase = !revealed ? "question" : verdict ? "verdict" : "answer";
 
-  const languages = useMemo(() => [...new Set(["en-US", frontLang])], [frontLang]);
+  const languages = useMemo(() => [...new Set([accent, frontLang])], [accent, frontLang]);
   const { status, speak, cancelSpeech, listenNow } = useVoice({
     engine,
     languages,

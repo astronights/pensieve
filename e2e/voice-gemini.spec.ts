@@ -66,6 +66,7 @@ test("voice with Gemini: the mic stays open and each utterance is transcribed on
   // Gemini chosen in Settings; the browser's recogniser must not be used.
   await page.addInitScript(() => {
     localStorage.setItem("pensieve:voice-engine", "gemini");
+    localStorage.setItem("pensieve:voice-accent", "en-IN");
     const fail = function () {
       throw new Error("browser speech recognition used");
     };
@@ -83,10 +84,10 @@ test("voice with Gemini: the mic stays open and each utterance is transcribed on
   await expect(card).toContainText("hej");
   await page.getByRole("button", { name: /^Voice off/ }).click();
 
-  // Each "utterance" from the fake mic is sent as a WAV clip, with the deck's language as a hint.
+  // Each "utterance" from the fake mic is sent as a WAV clip, with the user's accent and the deck's language as hints.
   await expect(card.locator(".verdict.ok")).toContainText("hi", { timeout: 10_000 });
   expect(requests[0].mime_type).toBe("audio/wav");
-  expect(requests[0].languages).toEqual(["en-US", "sv-SE"]);
+  expect(requests[0].languages).toEqual(["en-IN", "sv-SE"]);
   expect(Buffer.from(requests[0].audio, "base64").subarray(0, 4).toString()).toBe("RIFF");
   await expect(card).toContainText("Which river is longest?", { timeout: 5000 });
 

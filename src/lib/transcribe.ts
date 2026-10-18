@@ -29,7 +29,13 @@ export function parseTranscribeInput(body: unknown): TranscribeInput {
   return { audio: b.audio, mime_type: mime, languages };
 }
 
-/** The Interactions request: verbatim (no rewording of what was said), not stored by Google. */
+/** Words the app listens for as commands; Gemini is nudged towards hearing them right. */
+export const COMMAND_WORDS = ["show", "answer", "good", "again", "right", "wrong", "repeat", "more", "stop"];
+
+/**
+ * The Interactions request: verbatim (no rewording of what was said), the user's English accent and
+ * the deck's language as hints, biased towards the command words, not stored by Google.
+ */
 export function geminiRequest({ audio, mime_type, languages }: TranscribeInput) {
   return {
     model: GEMINI_MODEL,
@@ -38,6 +44,7 @@ export function geminiRequest({ audio, mime_type, languages }: TranscribeInput) 
       transcription_config: {
         mode: { type: "verbatim" },
         ...(languages.length ? { language_codes: languages } : {}),
+        custom_vocabulary: COMMAND_WORDS,
       },
     },
     store: false,

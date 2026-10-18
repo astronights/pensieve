@@ -20,7 +20,13 @@ describe("Gemini transcription", () => {
     expect(geminiRequest({ audio: "AAA", mime_type: "audio/wav", languages: ["en-US"] })).toEqual({
       model: "gemini-3.5-transcribe",
       input: [{ type: "audio", data: "AAA", mime_type: "audio/wav" }],
-      generation_config: { transcription_config: { mode: { type: "verbatim" }, language_codes: ["en-US"] } },
+      generation_config: {
+        transcription_config: {
+          mode: { type: "verbatim" },
+          language_codes: ["en-US"],
+          custom_vocabulary: ["show", "answer", "good", "again", "right", "wrong", "repeat", "more", "stop"],
+        },
+      },
       store: false,
     });
   });
