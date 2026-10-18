@@ -93,7 +93,9 @@ The app connects with node-postgres (`pg`) everywhere: Neon, local Postgres and 
 ## Voice
 
 Tap the 🎤 button on the study screen to cycle **Off → Voice answers → Read aloud + voice answers**
-(remembered on the device). The screen stays on while voice is on.
+(remembered on the device). The screen stays on while voice is on. It starts listening with each card and again after
+each thing you say. Chrome on Android stops listening after a few seconds of silence and dings every
+time it starts, so after a silence it waits for a tap on **Tap to listen** rather than dinging again.
 
 | When | Say | Does |
 |---|---|---|

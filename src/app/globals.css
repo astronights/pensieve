@@ -417,3 +417,4 @@ main.study > header { flex-wrap: wrap; row-gap: 0.5rem; }
 @media (prefers-reduced-motion: reduce) {
   .voice-dot.listening, .actions button.pending::after { animation: none; }
 }
+.voice-listen { min-height: 32px; padding: 0; font-size: inherit; font-weight: 600; }

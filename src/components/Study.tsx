@@ -300,10 +300,9 @@ export default function Study({ deckId, category, season }: Props) {
   const frontLang = langOverride ?? languageFromName(group) ?? "en-US";
   const phase: VoicePhase = !revealed ? "question" : verdict ? "verdict" : "answer";
 
-  const { status, speak, cancelSpeech } = useVoice({
+  const { status, speak, cancelSpeech, listenNow } = useVoice({
     active: voice !== "off",
-    // Kept on between cards (what's heard while an answer saves is ignored): restarting the mic
-    // brings up Android's microphone notification each time.
+    // Listening starts with each card (and after each phrase); a silence ends it until a tap.
     listen: voice !== "off" && !!card,
     onHeard: (alts) => latest.current.onHeard(alts),
     onFatal: (message) => {
@@ -354,10 +353,15 @@ export default function Study({ deckId, category, season }: Props) {
   // Read each new card's question aloud.
   const reading = voice === "read";
   useEffect(() => {
-    if (reading && !revealed) void speak(front());
+    if (reading && !revealed) void speak(front()).then((done) => done && listenNow());
     // Only when a card is shown or reading is switched on, not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, reading]);
+
+  // Listen again for each new card (once: Android dings every time listening starts).
+  useEffect(() => {
+    if (voice !== "off") listenNow();
+  }, [view, voice, listenNow]);
 
   // On reveal: read the answer (in read mode), then start the countdown on a spoken answer.
   useEffect(() => {
@@ -375,6 +379,7 @@ export default function Study({ deckId, category, season }: Props) {
         await speak(parts);
         // Interrupted by "repeat"/"more" still counts down; a new card cancels.
         if (cancelled) return;
+        listenNow();
       }
       if (!v || cancelled || latest.current.voice === "off") return;
       setCounting(true);
@@ -432,7 +437,14 @@ export default function Study({ deckId, category, season }: Props) {
           <div className="voice-bar" aria-live="polite">
             <span className={`voice-dot ${status}`} aria-hidden="true" />
             <span className="voice-hint">
-              <strong>{voice === "read" ? "Read aloud" : "Voice"}</strong> · {hint}
+              <strong>{voice === "read" ? "Read aloud" : "Voice"}</strong> ·{" "}
+              {status === "idle" ? (
+                <button type="button" className="link-button voice-listen" onClick={listenNow}>
+                  Tap to listen
+                </button>
+              ) : (
+                hint
+              )}
             </span>
             {voice === "read" && (
               <select

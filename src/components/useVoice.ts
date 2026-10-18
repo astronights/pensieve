@@ -69,7 +69,7 @@ function isEcho({ words: spoken, until }: { words: Set<string>; until: number },
 }
 
 /**
- * Listens for speech (English) in one long session while `listen` is true, and reads text
+ * Listens for speech (English) while `listen` is true: from `listenNow` until a silence ends it, and reads text
  * aloud with `speak`. The microphone stays on while speaking so you can interrupt; what it hears of
  * its own voice is ignored. Keeps the screen awake while `active`.
  */
@@ -112,12 +112,14 @@ export function useVoice({
     r.interimResults = false;
     r.maxAlternatives = 5;
     let handled = 0; // results of this session already passed on
+    let heard = false; // the session ended after hearing something, not after a silence
     let previous = ""; // Android repeats earlier phrases at the start of later ones in a session
     r.onresult = (e) => {
       for (let i = Math.max(handled, e.resultIndex); i < e.results.length; i++) {
         const result = e.results[i];
         if (!result?.isFinal) break;
         handled = i + 1;
+        heard = true;
         errors.current = 0;
         const alts = Array.from(result, (a) => {
           const t = a.transcript.trim();
@@ -145,8 +147,10 @@ export function useVoice({
         handlers.current.onFatal("Voice recognition isn't working (it needs an internet connection).");
         return;
       }
-      // Recognition can still stop after a long silence; start again (slower after errors).
-      if (want.current) restart.current = setTimeout(() => startRef.current(), 150 + errors.current * 1000);
+      // Chrome on Android ends a session after each phrase and after a few seconds of silence, and
+      // every new session plays a ding. Listen again after a phrase (an answer or command was just
+      // given), but not after a silence: then the user taps to listen (`listenNow`).
+      if (want.current && heard) restart.current = setTimeout(() => startRef.current(), 150);
     };
     rec.current = r;
     try {
@@ -268,5 +272,8 @@ export function useVoice({
     };
   }, [active]);
 
-  return { status, speak, cancelSpeech };
+  /** Starts listening if voice is on and it isn't already (a new card, or "Tap to listen"). */
+  const listenNow = start;
+
+  return { status, speak, cancelSpeech, listenNow };
 }

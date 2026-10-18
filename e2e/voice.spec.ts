@@ -5,12 +5,17 @@ const PASSCODE = process.env.APP_PASSCODE ?? "";
 /** A fake microphone and speech engine: `__say(text)` is what the user says; `__spoken` what was read. */
 async function fakeSpeech(page: Page) {
   await page.addInitScript(() => {
-    type Rec = { onresult?: (e: unknown) => void; results: unknown[] };
+    type Rec = {
+      onresult?: (e: unknown) => void;
+      onerror?: (e: unknown) => void;
+      onend?: () => void;
+      results: unknown[];
+    };
     const w = window as unknown as Record<string, unknown>;
     w.__spoken = [];
     w.__listening = null;
     w.__starts = 0;
-    // A continuous session, like Chrome's: results add up until it is stopped.
+    // Like Chrome on Android: a session ends after each phrase (`__say`) and after a silence (`__silence`).
     class FakeRecognition {
       results: unknown[] = [];
       start() {
@@ -26,8 +31,18 @@ async function fakeSpeech(page: Page) {
     w.__say = (text: string) => {
       const r = w.__listening as Rec | null;
       if (!r) return false;
+      w.__listening = null;
       r.results.push(Object.assign([{ transcript: text }], { isFinal: true }));
       r.onresult?.({ resultIndex: r.results.length - 1, results: r.results });
+      r.onend?.();
+      return true;
+    };
+    w.__silence = () => {
+      const r = w.__listening as Rec | null;
+      if (!r) return false;
+      w.__listening = null;
+      r.onerror?.({ error: "no-speech" });
+      r.onend?.();
       return true;
     };
     // Reading takes `__ttsMs`; cancel() ends what is being read, as browsers do.
@@ -56,7 +71,9 @@ async function fakeSpeech(page: Page) {
 
 /** Says something once the app is listening. */
 async function say(page: Page, text: string) {
-  await expect.poll(() => page.evaluate(() => !!(window as unknown as { __listening: unknown }).__listening)).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => !!(window as unknown as { __listening: unknown }).__listening))
+    .toBe(true);
   await page.evaluate((t) => (window as unknown as { __say: (t: string) => boolean }).__say(t), text);
 }
 
@@ -86,8 +103,15 @@ test("voice: spoken answers are checked and counted, with commands and read-alou
   await expect(page.locator(".actions .good.pending")).toBeVisible();
   await expect(card).toContainText("Which river is longest?", { timeout: 5000 });
 
-  // The mic stays on between cards (each restart shows Android's microphone notification).
-  expect(await page.evaluate(() => (window as unknown as { __starts: number }).__starts)).toBe(1);
+  // A silence ends listening and it doesn't restart by itself (each start dings on Android).
+  const starts = () => page.evaluate(() => (window as unknown as { __starts: number }).__starts);
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __silence: () => boolean }).__silence()))
+    .toBe(true);
+  const before = await starts();
+  await page.getByRole("button", { name: "Tap to listen" }).click();
+  expect(await starts()).toBe(before + 1);
+  await expect(page.getByRole("button", { name: "Tap to listen" })).toHaveCount(0);
 
   // A wrong answer shows ✗; "right" overrules it straight away.
   await say(page, "the amazon");
@@ -131,8 +155,6 @@ test("voice: spoken answers are checked and counted, with commands and read-alou
   await expect(card.locator(".verdict")).toHaveCount(0);
   await expect(card).toContainText("Which river is longest?");
   await expect(card.locator(".dot.learn.on")).toHaveCount(0);
-  // The mic was never restarted, even while reading aloud.
-  expect(await page.evaluate(() => (window as unknown as { __starts: number }).__starts)).toBe(1);
 
   // "stop" turns voice off.
   await say(page, "stop");
