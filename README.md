@@ -1,26 +1,66 @@
 # Pensieve
 
-Minimal flashcards: Next.js (App Router) + Neon Postgres (drizzle), behind a single passcode.
+A small, fast flashcard app for your phone. There are no daily limits and only two buttons. Cards come
+back after a set number of other cards rather than after a number of days, so you can study as much as
+you like in one sitting.
+
+Built with Next.js (App Router) and Postgres (Neon, via drizzle). It sits behind a single passcode and
+installs as an app on Android and iOS.
+
+<p align="center">
+  <img src="docs/screenshots/decks.png" width="24%" alt="Deck list with learned, in-progress and unseen counts" />
+  <img src="docs/screenshots/study-front.png" width="24%" alt="A card waiting to be answered" />
+  <img src="docs/screenshots/study-answer-dark.png" width="24%" alt="An answer with an explanation, in dark mode" />
+  <img src="docs/screenshots/settings-dark.png" width="24%" alt="Settings" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/landscape.png" width="72%" alt="Studying with the phone held sideways" />
+</p>
+
+## Features
+
+- **Two answers, Again or Good.** Three Goods in a row and a card is learned and stops coming up.
+- **Count-based spacing.** No due dates and no "come back tomorrow". A card returns after N other cards.
+- **Missed cards get reviewed.** A card you ever got wrong needs three extra, widely spaced Goods
+  before it counts as learned.
+- **Decks and sub-decks.** Study one sub-deck or the whole deck. The counters show
+  🟢 learned · 🔵 in progress · 🔴 unseen.
+- **Streak dots** on every card show how far along it is. Review dots are drawn apart, in blue.
+- **Rich cards.** Markdown, images, video and audio (external URLs), plus notes, an explanation and
+  extra info lines that appear once the answer is shown.
+- **Browse decks.** Go through cards in random order with **Next**, and send the ones you miss into
+  the Again/Good loop.
+- **Phone first.** Installable PWA, light and dark themes, landscape layout, and the next card is
+  prefetched so answers feel instant.
+- **Import anything.** A JSON import API that updates content without ever resetting progress, plus
+  an Anki `.apkg` converter.
 
 ## How studying works
 
-Two answers, no daily limit:
+Each deck keeps a count of answers given in it (a deck and its sub-decks share one count). When you
+answer, the card is scheduled to return a set number of answers later:
 
-- **Again**: the card comes back after 5 other cards, and its count of Goods in a row resets to 0.
-- **Good**: the card comes back after 15 cards, then 30 (the gap doubles each time). The third Good
-  in a row marks it **learned**, and it isn't shown again.
-- **Missed cards** (Again at any point) aren't learned yet after those 3 Goods: they need 3 more Goods
-  in a row first, coming back after 50, then 100, then 200 cards. Again during that review keeps
-  them there (back after 50 cards) and the 3 review Goods start again.
+| Answer | What happens |
+|---|---|
+| **Again** | Comes back after 5 cards. Its Good streak resets to 0. |
+| **Good** (1st, 2nd) | Comes back after 15 cards, then 30. The gap doubles each time. |
+| **Good** (3rd in a row) | **Learned**. It isn't shown again. |
 
-Cards are placed by how many answers ago they came up in the same deck (a deck and its sub-decks
-share one count; other decks don't move it), not by time, so you can study as many
-cards in a sitting as you like. Each turn shows the card being learned whose turn has come, else
-the next new card, else the next card being learned (early). When several cards are due at once, every third card is a
-new one, so a batch of reviews doesn't arrive as one long run. The numbers are in Settings.
+**Missed cards.** A card answered Again at any point isn't learned after those 3 Goods. It first needs
+3 more Goods in a row, after 50, 100 and then 200 cards. Again during that review stage keeps it in
+review (back after 50 cards) and the review Goods start over.
 
-Browse decks show unseen cards in random order: **Next** just marks a card seen, and **Again**
-puts it into the Again/Good loop above.
+**Which card comes next:**
+
+1. A card whose turn has come, the longest-waiting first.
+2. Otherwise the next new card. SRS decks use import order; browse decks are random.
+3. Otherwise the next card in progress, shown early.
+
+When several cards come due at once, every third card is a new one, so a batch of reviews doesn't
+arrive as one long run. All the gaps can be changed in Settings.
+
+**Browse decks** show unseen cards in random order. **Next** only marks a card seen, and **Again**
+puts it into the loop above.
 
 ## Setup (Vercel CLI, no Git integration)
 
@@ -44,17 +84,17 @@ vercel --prod                    # deploy
 Vercel runs the `vercel-build` script, which applies any pending migrations in `./drizzle`
 (`npm run db:deploy`) and then runs `next build`, so a fresh Neon database gets its tables on the
 first deploy. Only production deploys do this: preview builds (one per pull request) share the
-same database, so they skip migrations and a schema change lands only when it is merged. Set `SEED_DEMO=1` to also load the 20 demo cards (CI does this for the end-to-end tests).
-Migration `0003_remove_demo` deleted the demo decks from existing databases. If `DATABASE_URL_UNPOOLED` is set it is used for migrations.
+same database, so they skip migrations and a schema change lands only when it is merged. Set `SEED_DEMO=1` to also load the 20 demo cards (CI does this for the end-to-end tests). If `DATABASE_URL_UNPOOLED` is set it is used for migrations.
 
 The app connects with node-postgres (`pg`) everywhere: Neon, local Postgres and CI use the same driver.
 
 ## Install on a phone
 
 Pensieve is an installable web app (PWA). On Android, open it in Chrome and tap **Install app** in
-Settings, or use Chrome's **⋮ → Add to Home screen**. It then opens full screen from its own icon and
-stays logged in (the session lasts a year). The manifest (`src/app/manifest.ts`) and icons
-(`public/`, drawn from `public/icon.svg`) are served without the passcode so the browser can read them.
+Settings, or use Chrome's **⋮ → Add to Home screen**. On iOS, use Safari's **Share → Add to Home
+Screen**. It then opens full screen from its own icon, rotates to landscape, and stays logged in (the
+session lasts a year). The manifest (`src/app/manifest.ts`) and the icons (`public/`, drawn from
+`public/icon.svg`) are served without the passcode so the browser can read them.
 
 ## API
 
@@ -81,53 +121,27 @@ guidance, shown small under the answer), `explanation`, and `info` (`[{label, va
 footer, shown with the category). `meta.raw` can hold the untouched source record; it is stored but
 never sent to the browser. `tags` are shown under the question.
 
-## Content scripts
+## Importing cards
 
-Raw source material lives in `content/` (gitignored, never committed).
+Send decks and cards to `POST /api/import` (see the shapes above). Ids are stable, so re-importing
+updates content and never resets progress.
 
-```bash
-npx playwright install chromium   # once
-npm run zql:scrape                # ZQL question bank → content/zql/{questions,report,sample}.json
-npm run zql:scrape -- --headed    # watch the browser; --timeout <s> to wait longer
-```
+Raw source material belongs in `content/`, which is gitignored and never committed. One-off converters
+live in `scripts/` and write a dry-run preview before anything is uploaded.
 
-`report.json` describes every field (types, fill rate, values, markup and media hosts in the text) and
-`sample.json` holds a representative set of full records, for planning the import mapping.
+### From Anki
 
 ```bash
-npm run zql:convert                                   # dry run → content/zql/cards.json + convert-report.json
-npm run zql:convert -- --upload --url https://<app>   # import (passcode from APP_PASSCODE or --passcode)
+npm run anki:inspect -- ~/Downloads/MyDecks.apkg            # describe the export: decks, note types, fields
+npm run anki:convert -- ~/Downloads/MyDecks.apkg            # dry run → content/anki/cards.json, cards-preview.csv
+npm run anki:convert -- ~/Downloads/MyDecks.apkg --upload   # import (passcode from APP_PASSCODE or --passcode)
 ```
 
-ZQL questions go into a **ZQL** deck (Seasons 1–7) and a **Cultish** deck (Season 0 = CQL S1, Season 1),
-type `srs`, with ids like `zql:S01:GW08a:R3:P2:Q1` (sorted in game order). The question and its
-`imageurl` (plus any video/audio in it) are the front; the answer is split into answer, `notes`
-("Accept: …", "Prompt: …") and `explanation` (after the first `;`), with answer images on the back.
-Topic, source and qid are shown in the back footer; everything, including the raw record, is kept in
-`meta`. Re-running the import only updates content; progress is never reset.
-
-### Anki
-
-```bash
-npm run anki:inspect -- ~/Downloads/MyDecks.apkg   # → content/anki/<name>-report.json, -sample.json, -notes.json
-```
-
-Export from Anki with **File → Export…** as an *Anki Deck Package (.apkg)* (one deck or all decks) or an
-*Anki Collection Package (.colpkg)*; both the current and the "Support older Anki versions" formats are
-read. The report lists the decks (nested with `::`), note types with their fields and card templates,
-the formatting used in each field and the most common tags, for planning the import mapping.
-
-```bash
-npm run anki:convert -- ~/Downloads/MyDecks.apkg           # dry run → content/anki/cards.json, cards-preview.csv
-npm run anki:convert -- ~/Downloads/MyDecks.apkg --upload  # import (passcode from APP_PASSCODE or --passcode)
-```
-
-Anki decks named `<Language> - <Book/Level>::<Topic>` become one deck per language with a sub-deck per
-level (`Russian - Между нами Unit 1::Clothing` → **Russian › Unit 1**, `Mandarin - HSK1::…` → **Mandarin ›
-HSK 1**); the topic becomes the card's category, and new cards come up topic by topic in Anki's order.
-Fields are converted from HTML to plain text, tags are dropped (the raw note is kept in `meta.raw`) and
-everything starts unseen. The Mandarin meanings, which the export only had as scrambled tags, come from
-`scripts/anki/fixes/mandarin-meanings.json` and are shown under the pinyin.
+Export from Anki with **File → Export…** as an *Anki Deck Package (.apkg)* or *Collection Package
+(.colpkg)*. Both the current format and "Support older Anki versions" are read. Decks named
+`<Subject> - <Level>::<Topic>` become one deck per subject with a sub-deck per level, and the topic
+becomes the card's category. Fields are converted from HTML to text and duplicate words are merged into
+one card. Everything starts unseen.
 
 ## Development
 
