@@ -37,9 +37,21 @@ const NUMBER_WORDS: Record<string, string> = {
   hundred: "100",
 };
 
+/** Letters that accents-stripping leaves alone, spelled the way English writes them. */
+const FOLD: Record<string, string> = { ø: "o", æ: "ae", œ: "oe", ß: "ss", ł: "l", đ: "d", ð: "d", þ: "th", ı: "i" };
+
+/** The other common way to write umlauts and the like: "Gödel" → "Goedel", "Ångström" → "Aangstroem". */
+export function spelledOut(text: string): string {
+  return text
+    .normalize("NFC")
+    .replace(/[äöüåøÄÖÜÅØ]/g, (c) => ({ ä: "ae", ö: "oe", ü: "ue", å: "aa", ø: "oe" })[c.toLowerCase()] ?? c);
+}
+
 /** Words of a phrase for comparing: no accents, case, punctuation or "the/a/an/to"; "six" → "6". */
 export function words(text: string): string[] {
   return text
+    .toLowerCase()
+    .replace(/[øæœßłđðþı]/g, (c) => FOLD[c])
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
     .toLowerCase()
@@ -72,8 +84,12 @@ export function plainText(md: string): string {
 export function answerTargets(back: string, notes?: string | null): string[][] {
   const out: string[][] = [];
   const add = (phrases: string[]) => {
-    const clean = phrases.map((p) => words(p).join(" ")).filter(Boolean);
-    if (clean.length === phrases.length && clean.length > 0) out.push(clean);
+    // Each answer as written with accents dropped ("Godel") and with them spelled out ("Goedel").
+    for (const spell of [(p: string) => p, spelledOut]) {
+      const clean = phrases.map((p) => words(spell(p)).join(" ")).filter(Boolean);
+      if (clean.length === phrases.length && clean.length > 0 && !out.some((o) => o.join("|") === clean.join("|")))
+        out.push(clean);
+    }
   };
   const bold = [...back.matchAll(/\*\*(.+?)\*\*|__(.+?)__/g)].map((m) => plainText(m[1] ?? m[2]));
   if (bold.length > 0) {
@@ -104,17 +120,47 @@ function levenshtein(a: string, b: string): number {
   return prev[b.length];
 }
 
-/** Spelling slack for a phrase of this many letters (speech recognition spells names loosely). */
-const slack = (len: number) => (len <= 3 ? 0 : len <= 5 ? 1 : len <= 8 ? 2 : Math.floor(len / 3));
+/**
+ * Spelling slack for a phrase of this many letters (speech recognition spells names loosely). Short
+ * words must match exactly so near neighbours stay wrong: Iran/Iraq, Austria/Australia, Slovakia/Slovenia.
+ */
+const slack = (len: number) => (len <= 4 ? 0 : len <= 9 ? 1 : len <= 12 ? 2 : Math.floor(len / 5));
+
+/**
+ * Roughly how a word sounds, so a name the recogniser spelled the English way still matches:
+ * "Philippe" ≈ "filip", "Schumann" ≈ "shuman", "Tchaikovsky" ≈ "chaikovski". Rules on letters only.
+ */
+export function sound(word: string): string {
+  return word
+    .replace(/ph/g, "f")
+    .replace(/t?sch|tch|tsh/g, (m) => (m.startsWith("t") ? "ch" : "sh"))
+    .replace(/gh|th|dt/g, (m) => (m[0] === "g" ? "g" : "t"))
+    .replace(/ck|q/g, "k")
+    .replace(/x/g, "ks")
+    .replace(/c(?=[eiy])/g, "s")
+    .replace(/c(?!h)/g, "k")
+    .replace(/z/g, "s")
+    .replace(/w/g, "v")
+    .replace(/ee|ie|ea/g, "i")
+    .replace(/oo|ou|ue/g, "u")
+    .replace(/ae/g, "e")
+    .replace(/oe/g, "o")
+    .replace(/y/g, "i")
+    .replace(/(.)\1+/g, "$1")
+    .replace(/(?<=..)e$/, "");
+}
 
 /** True if `phrase` (already normalised) was said somewhere in `heard`, allowing small misspellings. */
 function said(heard: string[], phrase: string): boolean {
   const target = phrase.replace(/ /g, "");
+  const targetSound = sound(target);
   const n = phrase.split(" ").length;
   for (let i = 0; i < heard.length; i++) {
     // Compare against runs of nearby length, so "ulan bator" can match "ulaanbaatar".
     for (let w = Math.max(1, n - 1); w <= n + 1 && i + w <= heard.length; w++) {
-      if (levenshtein(heard.slice(i, i + w).join(""), target) <= slack(target.length)) return true;
+      const run = heard.slice(i, i + w).join("");
+      if (levenshtein(run, target) <= slack(target.length)) return true;
+      if (levenshtein(sound(run), targetSound) <= slack(targetSound.length)) return true;
     }
   }
   return false;

@@ -105,7 +105,10 @@ Tap the 🎤 button on the study screen to cycle **Off → Voice answers → Rea
 
 An answer is right when it contains the **bold** part of the card's answer, or else any one of its
 meanings (split by `,` `;` `/` or lines), or anything after "Accept:" in the notes. Case, accents,
-punctuation, "the/a/to" and small misspellings are ignored. Answers are heard in English.
+punctuation, "the/a/to" and small misspellings are ignored. Answers are heard in English, so foreign
+names are matched the way English spells them: "Godel" or "Goedel" for "Gödel", "Strauss" for
+"Strauß", and sound-alikes such as "Filip" for "Philippe". Short words must match exactly, so near
+neighbours (Iran/Iraq, Austria/Australia) stay wrong.
 
 Read aloud reads the question in the deck's language: from the script for non-Latin text, otherwise
 from the top-level deck's name ("Swedish" → Swedish), and it can be changed per deck. Answers are read

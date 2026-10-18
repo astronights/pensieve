@@ -41,6 +41,33 @@ describe("answer checking", () => {
     expect(right("car", "cat")).toBe(false);
   });
 
+  it("accepts foreign letters written the English way", () => {
+    expect(right("godel", "Gödel")).toBe(true);
+    expect(right("goedel", "Gödel")).toBe(true);
+    expect(right("strauss", "Strauß")).toBe(true);
+    expect(right("malmo", "Malmø")).toBe(true);
+    expect(right("angstrom", "Ångström")).toBe(true);
+    expect(right("zurich", "Zürich")).toBe(true);
+    expect(right("aero", "Ærø")).toBe(true);
+  });
+
+  it("accepts names that sound the same but are spelled the English way", () => {
+    expect(right("filip", "Philippe")).toBe(true);
+    expect(right("shuman", "Schumann")).toBe(true);
+    expect(right("chaikovski", "Tchaikovsky")).toBe(true);
+    expect(right("ulan bator", "Ulaanbaatar")).toBe(true);
+  });
+
+  it("keeps near neighbours wrong", () => {
+    expect(right("iraq", "Iran")).toBe(false);
+    expect(right("australia", "Austria")).toBe(false);
+    expect(right("sudan", "Sweden")).toBe(false);
+    expect(right("peru", "Paris")).toBe(false);
+    expect(right("mali", "Malawi")).toBe(false);
+    expect(right("niger", "Nigeria")).toBe(false);
+    expect(right("slovenia", "Slovakia")).toBe(false);
+  });
+
   it("reads numbers said as words", () => {
     expect(right("six", "Six")).toBe(true);
     expect(right("6", "six")).toBe(true);
