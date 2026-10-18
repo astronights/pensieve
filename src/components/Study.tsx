@@ -185,7 +185,7 @@ export default function Study({ deckId, category, season }: Props) {
   const extras = cardExtras(card?.meta);
 
   return (
-    <main>
+    <main className="study">
       <header>
         <BackLink />
         {data && (

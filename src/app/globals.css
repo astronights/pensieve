@@ -354,3 +354,24 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .legend { display: flex; justify-content: center; gap: 1rem; margin: 0; font-size: 0.8rem; }
 .legend-item { display: inline-flex; align-items: center; gap: 0.35rem; }
 .legend-item::before { content: ""; width: 0.55rem; height: 0.55rem; border-radius: 999px; background: var(--tone); }
+
+/* Study screen on a phone held sideways: card on the left, answer buttons in a column on the right */
+@media (orientation: landscape) and (max-height: 600px) {
+  main.study {
+    max-width: none;
+    min-height: 100dvh;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(9rem, 26vw, 15rem);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: 0.75rem 1rem;
+    padding: 0.5rem max(1rem, env(safe-area-inset-right)) 0.75rem max(1rem, env(safe-area-inset-left));
+  }
+  main.study > header, main.study > .error, main.study > p { grid-column: 1 / -1; }
+  main.study > .card { grid-column: 1; grid-row: 2; min-height: 0; overflow-y: auto; justify-content: safe center; }
+  main.study > .skeleton:first-of-type { grid-column: 1; grid-row: 2; min-height: 0 !important; }
+  main.study > .skeleton + .skeleton, main.study > .reveal, main.study > .actions { grid-column: 2; grid-row: 2; }
+  main.study > .reveal { height: 100%; }
+  main.study > .actions { grid-template-columns: 1fr; grid-auto-rows: 1fr; position: static; padding-bottom: 0; }
+  main.study > .actions button { min-height: 0; }
+  main.study .card img, main.study .card video { max-height: 45dvh; }
+}
