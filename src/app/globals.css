@@ -373,7 +373,9 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
   /* Answer buttons fill the column; the mic button sits under them on the right */
   main.study > .controls { flex-direction: column; position: static; padding-bottom: 0; min-height: 0; }
   main.study .controls > .reveal, main.study .controls > .actions { flex: 1; }
-  main.study .controls > .listen-again { align-self: flex-end; width: 56px; min-height: 56px; }
+  /* Sideways there's room: a full-width "Tap to listen" under the answer buttons */
+  main.study .controls > .listen-again { width: 100%; min-height: 52px; gap: 0.5rem; font-weight: 600; }
+  main.study .listen-again .listen-label { display: inline; }
   main.study .actions { grid-template-columns: 1fr; grid-auto-rows: 1fr; }
   main.study .actions button { min-height: 0; }
   main.study .card img, main.study .card video { max-height: 45dvh; }
@@ -441,4 +443,5 @@ main.study > header { flex-wrap: wrap; row-gap: 0.5rem; }
   color: var(--accent);
   border-color: var(--accent);
 }
+.listen-label { display: none; }
 .voice-dot.thinking { background: var(--accent); animation: voice-pulse 0.8s ease-in-out infinite; }

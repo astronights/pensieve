@@ -579,6 +579,7 @@ export default function Study({ deckId, category, season }: Props) {
                 onClick={listenNow}
               >
                 <VoiceIcon mode="listen" />
+                <span className="listen-label">Tap to listen</span>
               </button>
             )}
           </div>
