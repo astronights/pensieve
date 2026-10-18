@@ -106,7 +106,7 @@ time it starts, so after a silence it waits for a tap on **Tap to listen** rathe
 | Answer showing | "good" / "yes", "again" / "no" | Answers |
 | Any time | "repeat", "more", "stop" | Reads the card again, reads the notes and explanation, turns voice off |
 
-An answer is right when it contains the **bold** part of the card's answer (with "or", the bold part
+An answer is right when it contains the **bold** part of the card's answer (with "or" or "/", the bold part
 of either side on its own), or else any one of its meanings (split by `,` `;` `/`, "or" or lines), or anything after "Accept:" in the notes. Case, accents,
 punctuation, "the/a/to" and small misspellings are ignored. Answers are heard in English, so foreign
 names are matched the way English spells them: "Godel" or "Goedel" for "Gödel", "Strauss" for

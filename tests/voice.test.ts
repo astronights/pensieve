@@ -36,6 +36,12 @@ describe("answer checking", () => {
     expect(right("tristan and isolde", "**Romeo** and **Juliet** or **Tristan** and **Isolde**")).toBe(true);
     // A side without bold counts as a whole.
     expect(right("trinidad and tobago", "**Tobago** or Trinidad and Tobago")).toBe(true);
+    // A slash is a choice too, but not in a number.
+    expect(right("mumbai", "**Bombay** / **Mumbai**")).toBe(true);
+    expect(right("bombay", "**Bombay/Mumbai**")).toBe(true);
+    expect(right("bombay mumbai", "**Bombay**/**Mumbai**")).toBe(true);
+    expect(right("1", "**1/2**")).toBe(false);
+    expect(right("1/2", "**1/2**")).toBe(true);
     // Without bold, "or" separates meanings too.
     expect(right("automobile", "car or automobile")).toBe(true);
   });

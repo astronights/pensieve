@@ -94,10 +94,11 @@ export function answerTargets(back: string, notes?: string | null): string[][] {
     }
   };
   const BOLD = /\*\*(.+?)\*\*|__(.+?)__/g;
-  const OR = /\s+or\s+/i;
+  // "or" and "/" both give a choice ("**Bombay** / **Mumbai**"), but not a slash in a number (1/2).
+  const OR = /\s+or\s+|(?<!\d)\s*\/\s*(?!\d)/i;
   const boldOf = (text: string) => [...text.matchAll(BOLD)].map((m) => plainText(m[1] ?? m[2]));
   if (boldOf(back).length > 0) {
-    // "**A or B**" is the same choice as "**A** or **B**".
+    // "**A or B**" (or "**A/B**") is the same choice as "**A** or **B**".
     const sides = back
       .replace(BOLD, (_, a: string | undefined, b: string | undefined) =>
         (a ?? b ?? "")
@@ -111,7 +112,7 @@ export function answerTargets(back: string, notes?: string | null): string[][] {
       add(bold.length > 0 ? bold : [plainText(side)]);
     }
   } else {
-    for (const part of plainText(back).split(/[\n,;/]|\s+or\s+/i)) {
+    for (const part of plainText(back).split(new RegExp(`[\\n,;]|${OR.source}`, "i"))) {
       add([part]);
       const unbracketed = part.replace(/\([^)]*\)|\[[^\]]*\]/g, " ");
       if (unbracketed !== part) add([unbracketed]);
