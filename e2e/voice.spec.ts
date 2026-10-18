@@ -5,12 +5,16 @@ const PASSCODE = process.env.APP_PASSCODE ?? "";
 /** A fake microphone and speech engine: `__say(text)` is what the user says; `__spoken` what was read. */
 async function fakeSpeech(page: Page) {
   await page.addInitScript(() => {
-    type Rec = { onresult?: (e: unknown) => void; onend?: () => void };
+    type Rec = { onresult?: (e: unknown) => void; results: unknown[] };
     const w = window as unknown as Record<string, unknown>;
     w.__spoken = [];
     w.__listening = null;
+    w.__starts = 0;
+    // A continuous session, like Chrome's: results add up until it is stopped.
     class FakeRecognition {
+      results: unknown[] = [];
       start() {
+        w.__starts = (w.__starts as number) + 1;
         w.__listening = this;
       }
       abort() {
@@ -22,10 +26,8 @@ async function fakeSpeech(page: Page) {
     w.__say = (text: string) => {
       const r = w.__listening as Rec | null;
       if (!r) return false;
-      w.__listening = null;
-      const result = Object.assign([{ transcript: text }], { isFinal: true });
-      r.onresult?.({ resultIndex: 0, results: [result] });
-      r.onend?.();
+      r.results.push(Object.assign([{ transcript: text }], { isFinal: true }));
+      r.onresult?.({ resultIndex: r.results.length - 1, results: r.results });
       return true;
     };
     Object.defineProperty(window, "speechSynthesis", {
@@ -72,6 +74,9 @@ test("voice: spoken answers are checked and counted, with commands and read-alou
   await expect(card.locator(".verdict.ok")).toContainText("hi");
   await expect(page.locator(".actions .good.pending")).toBeVisible();
   await expect(card).toContainText("Which river is longest?", { timeout: 5000 });
+
+  // The mic stays on between cards (each restart shows Android's microphone notification).
+  expect(await page.evaluate(() => (window as unknown as { __starts: number }).__starts)).toBe(1);
 
   // A wrong answer shows ✗; "right" overrules it straight away.
   await say(page, "the amazon");

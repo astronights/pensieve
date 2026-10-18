@@ -302,7 +302,9 @@ export default function Study({ deckId, category, season }: Props) {
 
   const { status, speak } = useVoice({
     active: voice !== "off",
-    listen: voice !== "off" && !!card && !busy,
+    // Kept on between cards (what's heard while an answer saves is ignored): restarting the mic
+    // brings up Android's microphone notification each time.
+    listen: voice !== "off" && !!card,
     onHeard: (alts) => latest.current.onHeard(alts),
     onFatal: (message) => {
       setError(message);

@@ -62,7 +62,7 @@ function speakOne(part: SpeechPart): Promise<void> {
 }
 
 /**
- * Listens for speech (English, one utterance at a time) while `listen` is true, and reads text
+ * Listens for speech (English) in one long session while `listen` is true, and reads text
  * aloud with `speak`. The microphone is paused while speaking so it doesn't hear itself. Keeps
  * the screen awake while `active`.
  */
@@ -98,15 +98,27 @@ export function useVoice({
     if (!Ctor || !want.current || speaking.current || rec.current || document.hidden) return;
     const r = new Ctor();
     r.lang = "en-US";
-    r.continuous = false;
+    // One long session: every restart makes Android show its microphone notification again.
+    r.continuous = true;
     r.interimResults = false;
     r.maxAlternatives = 5;
+    let handled = 0; // results of this session already passed on
+    let previous = ""; // Android repeats earlier phrases at the start of later ones in a session
     r.onresult = (e) => {
-      const result = e.results[e.results.length - 1];
-      if (!result?.isFinal) return;
-      errors.current = 0;
-      const alts = Array.from(result, (a) => a.transcript.trim()).filter(Boolean);
-      if (alts.length) handlers.current.onHeard(alts);
+      for (let i = Math.max(handled, e.resultIndex); i < e.results.length; i++) {
+        const result = e.results[i];
+        if (!result?.isFinal) break;
+        handled = i + 1;
+        errors.current = 0;
+        const alts = Array.from(result, (a) => {
+          const t = a.transcript.trim();
+          return previous && t.length > previous.length && t.toLowerCase().startsWith(previous.toLowerCase())
+            ? t.slice(previous.length).trim()
+            : t;
+        }).filter(Boolean);
+        previous = result[0]?.transcript.trim() ?? previous;
+        if (alts.length) handlers.current.onHeard(alts);
+      }
     };
     r.onerror = (e) => {
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
@@ -124,7 +136,7 @@ export function useVoice({
         handlers.current.onFatal("Voice recognition isn't working (it needs an internet connection).");
         return;
       }
-      // Recognition stops after each utterance or a silence; start again (slower after errors).
+      // Recognition can still stop after a long silence; start again (slower after errors).
       if (want.current && !speaking.current)
         restart.current = setTimeout(() => startRef.current(), 150 + errors.current * 1000);
     };
