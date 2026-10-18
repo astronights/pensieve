@@ -33,7 +33,9 @@ const VOICE_MODES: VoiceMode[] = ["off", "listen", "read"];
 const VOICE_KEY = "pensieve:voice";
 const langKey = (group: string) => `pensieve:voice-lang:${group}`;
 /** How long a spoken answer's ✓/✗ shows before it counts, so a misheard answer can be corrected. */
-export const VERDICT_MS = 2000;
+export const VERDICT_MS = 3000;
+/** Time to read a new card before listening starts (what's said before then is ignored). */
+export const LISTEN_DELAY_MS = 2000;
 
 const VOICE_LABEL: Record<VoiceMode, string> = {
   off: "Voice off",
@@ -136,6 +138,9 @@ export default function Study({ deckId, category, season }: Props) {
   /** What was heard as an answer to this card and whether it was right; `counting` once the 2s run. */
   const [verdict, setVerdict] = useState<{ ok: boolean; heard: string } | null>(null);
   const [counting, setCounting] = useState(false);
+  /** Voice listens for this card (LISTEN_DELAY_MS after it is shown). */
+  const [ready, setReady] = useState(false);
+  const readyRef = useRef(false);
   const countdown = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stopCountdown = useCallback(() => {
@@ -185,6 +190,7 @@ export default function Study({ deckId, category, season }: Props) {
     setRevealed(false);
     setVerdict(null);
     setCounting(false);
+    setReady(false);
     setView((v) => v + 1);
   }, []);
 
@@ -307,6 +313,7 @@ export default function Study({ deckId, category, season }: Props) {
   const { status, speak, cancelSpeech, listenNow } = useVoice({
     engine,
     languages,
+    accepting: ready,
     active: voice !== "off",
     // Listening starts with each card (and after each phrase); a silence ends it until a tap.
     listen: voice !== "off" && !!card,
@@ -336,7 +343,7 @@ export default function Study({ deckId, category, season }: Props) {
   // Latest values for speech callbacks, which fire long after the render that set them up.
   const latest = useRef({ onHeard: (() => {}) as (alts: string[]) => void, voice, answer, verdict });
   const onHeard = (alts: string[]) => {
-    if (!card || busy) return;
+    if (!card || busy || !readyRef.current) return;
     const command = alts.map((a) => parseCommand(a, phase)).find(Boolean) as VoiceCommand | undefined;
     if (command === "stop") return setVoice("off");
     if (command === "repeat") return void speak(revealed ? back() : front());
@@ -359,14 +366,21 @@ export default function Study({ deckId, category, season }: Props) {
   // Read each new card's question aloud.
   const reading = voice === "read";
   useEffect(() => {
-    if (reading && !revealed) void speak(front()).then((done) => done && listenNow());
+    if (reading && !revealed) void speak(front()).then((done) => done && readyRef.current && listenNow());
     // Only when a card is shown or reading is switched on, not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, reading]);
 
-  // Listen again for each new card (once: Android dings every time listening starts).
+  // Listen for each new card after a moment to read it (once: Android dings every time listening starts).
   useEffect(() => {
-    if (voice !== "off") listenNow();
+    readyRef.current = false;
+    if (voice === "off") return;
+    const timer = setTimeout(() => {
+      readyRef.current = true;
+      setReady(true);
+      listenNow();
+    }, LISTEN_DELAY_MS);
+    return () => clearTimeout(timer);
   }, [view, voice, listenNow]);
 
   // On reveal: read the answer (in read mode), then start the countdown on a spoken answer.
@@ -403,13 +417,15 @@ export default function Study({ deckId, category, season }: Props) {
   const hint =
     status === "speaking"
       ? "Reading…"
-      : status === "thinking"
-        ? "Transcribing…"
-        : phase === "question"
-          ? "Say the answer or “show”"
-          : phase === "verdict"
-            ? "“Right” or “wrong” to change"
-            : "Say “good” or “again”";
+      : !ready
+        ? "Listening in a moment…"
+        : status === "thinking"
+          ? "Transcribing…"
+          : phase === "question"
+            ? "Say the answer or “show”"
+            : phase === "verdict"
+              ? "“Right” or “wrong” to change"
+              : "Say “good” or “again”";
 
   return (
     <main className="study">
@@ -442,11 +458,11 @@ export default function Study({ deckId, category, season }: Props) {
           )}
         </span>
         {voice !== "off" && (
-          <div className="voice-bar" aria-live="polite">
+          <div className="voice-bar" aria-live="polite" data-ready={ready}>
             <span className={`voice-dot ${status}`} aria-hidden="true" />
             <span className="voice-hint">
               <strong>{voice === "read" ? "Read aloud" : "Voice"}</strong> ·{" "}
-              {status === "idle" ? "Not listening" : hint}
+              {ready && status === "idle" ? "Not listening" : hint}
             </span>
             {voice === "read" && (
               <select
@@ -569,7 +585,7 @@ export default function Study({ deckId, category, season }: Props) {
                 </button>
               </div>
             )}
-            {voice !== "off" && status === "idle" && (
+            {voice !== "off" && ready && status === "idle" && (
               // Listening stopped after a silence: a mic button next to the answer buttons resumes it.
               <button
                 type="button"

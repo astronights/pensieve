@@ -19,6 +19,8 @@ export type GeminiListenerEvents = {
   onFatal: (message: string) => void;
   /** Language hints for the transcriber, read when each clip is sent. */
   languages: () => string[];
+  /** Whether a clip heard now should be transcribed (not while the user is still reading). */
+  accepting: () => boolean;
 };
 
 /**
@@ -73,7 +75,7 @@ export class GeminiListener {
     const detector = new UtteranceDetector(ctx.sampleRate);
     processor.onaudioprocess = (e) => {
       const clip = detector.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-      if (clip) void this.send(clip, ctx.sampleRate, Date.now());
+      if (clip && this.events.accepting()) void this.send(clip, ctx.sampleRate, Date.now());
     };
     if (ctx.state === "suspended") await ctx.resume().catch(() => {});
     // Without a recent tap (e.g. voice was restored on a page reload) audio stays paused until one.

@@ -31,7 +31,7 @@ installs as an app on Android and iOS.
 - **Browse decks.** Go through cards in random order with **Next**, and send the ones you miss into
   the Again/Good loop.
 - **Hands-free voice mode.** Say your answer and it's checked against the card (✓/✗), then counted
-  as Good or Again after 2 seconds unless you say "right" or "wrong". Optionally reads each card aloud.
+  as Good or Again after 3 seconds unless you say "right" or "wrong". Optionally reads each card aloud.
 - **Phone first.** Installable PWA, light and dark themes, landscape layout, and the next card is
   prefetched so answers feel instant.
 - **Import anything.** A JSON import API that updates content without ever resetting progress, plus
@@ -93,13 +93,14 @@ The app connects with node-postgres (`pg`) everywhere: Neon, local Postgres and 
 ## Voice
 
 Tap the 🎤 button on the study screen to cycle **Off → Voice answers → Read aloud + voice answers**
-(remembered on the device). The screen stays on while voice is on. It starts listening with each card and again after
+(remembered on the device). The screen stays on while voice is on. Each card gets 2 seconds to be
+read before listening starts. It starts listening with each card and again after
 each thing you say. Chrome on Android stops listening after a few seconds of silence and dings every
 time it starts, so after a silence it waits for a tap on **Tap to listen** rather than dinging again.
 
 | When | Say | Does |
 |---|---|---|
-| Question showing | *your answer* | Checks it, reveals the card with ✓ or ✗, and counts Good or Again after 2 seconds |
+| Question showing | *your answer* | Checks it, reveals the card with ✓ or ✗, and counts Good or Again after 3 seconds |
 | | "show" / "answer" | Reveals without checking (when you don't know) |
 | ✓ / ✗ showing | "right" / "wrong" | Overrules the check and answers straight away |
 | Answer showing | "good" / "yes", "again" / "no" | Answers |

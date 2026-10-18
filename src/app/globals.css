@@ -406,7 +406,7 @@ main.study > header { flex-wrap: wrap; row-gap: 0.5rem; }
 .verdict.ok { color: var(--good); }
 .verdict.wrong { color: var(--again); }
 .verdict .muted { font-weight: 400; }
-/* The answer a spoken answer will count as, filling up over the 2 seconds before it does */
+/* The answer a spoken answer will count as, filling up over the 3 seconds (VERDICT_MS) before it does */
 .actions button { position: relative; overflow: hidden; }
 .actions button.pending { border-color: currentColor; }
 .actions button.pending::after {
@@ -416,7 +416,7 @@ main.study > header { flex-wrap: wrap; row-gap: 0.5rem; }
   height: 4px;
   background: currentColor;
   transform-origin: left;
-  animation: verdict-fill 2s linear forwards;
+  animation: verdict-fill 3s linear forwards;
 }
 @keyframes verdict-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @media (prefers-reduced-motion: reduce) {

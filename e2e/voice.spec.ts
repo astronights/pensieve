@@ -71,6 +71,8 @@ async function fakeSpeech(page: Page) {
 
 /** Says something once the app is listening. */
 async function say(page: Page, text: string) {
+  // Each card gives 2 seconds to read it before listening.
+  await expect(page.locator('.voice-bar[data-ready="true"]')).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => !!(window as unknown as { __listening: unknown }).__listening))
     .toBe(true);
@@ -106,6 +108,7 @@ test("voice: spoken answers are checked and counted, with commands and read-alou
   // A silence: listening restarts once by itself; after a second it waits for a tap (each start dings on Android).
   const starts = () => page.evaluate(() => (window as unknown as { __starts: number }).__starts);
   const silence = () => page.evaluate(() => (window as unknown as { __silence: () => boolean }).__silence());
+  await expect(page.locator('.voice-bar[data-ready="true"]')).toBeVisible();
   await expect.poll(silence).toBe(true);
   await expect(page.getByRole("button", { name: "Tap to listen" })).toHaveCount(0);
   await expect.poll(silence).toBe(true);

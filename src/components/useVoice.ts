@@ -82,11 +82,14 @@ export function useVoice({
   listen,
   engine,
   languages,
+  accepting = true,
   onHeard,
   onFatal,
 }: {
   active: boolean;
   listen: boolean;
+  /** False while what's heard would be ignored anyway, so Gemini isn't asked to transcribe it. */
+  accepting?: boolean;
   engine: VoiceEngine;
   /** Language hints for Gemini. */
   languages: string[];
@@ -102,9 +105,9 @@ export function useVoice({
   const speech = useRef(0); // bumps to cancel what is being read
   /** Words being read aloud, until shortly after: the mic hears them too and they aren't the user. */
   const echo = useRef({ words: new Set<string>(), until: 0 });
-  const handlers = useRef({ onHeard, onFatal, engine, languages });
+  const handlers = useRef({ onHeard, onFatal, engine, languages, accepting });
   useLayoutEffect(() => {
-    handlers.current = { onHeard, onFatal, engine, languages };
+    handlers.current = { onHeard, onFatal, engine, languages, accepting };
   });
   const thinking = useRef(false);
   /** Silences in a row since the user last spoke or tapped (each restart after one dings). */
@@ -145,6 +148,7 @@ export function useVoice({
           refresh();
         },
         languages: () => handlers.current.languages,
+        accepting: () => handlers.current.accepting,
       });
       void gemini.current.start().then(refresh);
       return;
