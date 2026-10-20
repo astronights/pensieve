@@ -388,6 +388,7 @@ main.study > header { flex-wrap: wrap; row-gap: 0.5rem; }
 .voice-bar { flex-basis: 100%; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--muted); min-width: 0; }
 .voice-hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .voice-hint strong { color: var(--fg); font-weight: 600; }
+.voice-heard { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); font-style: italic; }
 .voice-bar select {
   font: inherit;
   font-size: 0.85rem;

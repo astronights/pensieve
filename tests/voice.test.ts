@@ -142,11 +142,20 @@ describe("commands", () => {
   it("understands commands the way recognisers and accents spell them", () => {
     for (const said of ["so", "Shoe.", "shaw", "show me", "please show", "I don't know", "no idea", "pass"])
       expect(parseCommand(said, "question"), said).toBe("show");
-    for (const said of ["write", "Ride.", "that's right", "you're right", "yeah", "correct", "righ"])
-      expect(parseCommand(said, "verdict"), said).toBe("good");
-    for (const said of ["wrong", "rong", "that's wrong", "nope", "not right", "wromg"])
-      expect(parseCommand(said, "verdict"), said).toBe("again");
-    expect(parseCommand("not wrong", "verdict")).toBe("good");
+    for (const said of ["write", "Ride.", "that's right", "you're right", "correct", "righ"])
+      expect(parseCommand(said, "answer"), said).toBe("good");
+    for (const said of ["wrong", "rong", "that's wrong", "not right", "wromg"])
+      expect(parseCommand(said, "answer"), said).toBe("again");
+    // "right"/"wrong" don't overrule a ✓/✗: only "nope" does.
+    expect(parseCommand("right", "verdict")).toBeNull();
+    expect(parseCommand("wrong", "verdict")).toBeNull();
+    // While the ✓/✗ shows, "nope" overrules the app's call and "yes" accepts it.
+    for (const said of ["nope", "No.", "nah", "nop"]) expect(parseCommand(said, "verdict"), said).toBe("overrule");
+    for (const said of ["yes", "yeah", "OK", "okay"]) expect(parseCommand(said, "verdict"), said).toBe("confirm");
+    // After a plain reveal, yes/no still mean good/again.
+    expect(parseCommand("nope", "answer")).toBe("again");
+    expect(parseCommand("yeah", "answer")).toBe("good");
+    expect(parseCommand("not wrong", "answer")).toBe("good");
     // Near-misses never stop voice, and an answer that isn't a command stays an answer.
     expect(parseCommand("step", "answer")).toBeNull();
     expect(parseCommand("snowman", "question")).toBeNull();
@@ -155,11 +164,6 @@ describe("commands", () => {
   it("ignores hesitations", () => {
     expect(parseCommand("Um, show.", "question")).toBe("show");
     expect(parseCommand("uh good", "answer")).toBe("good");
-  });
-
-  it("while a verdict shows: right/wrong flip it", () => {
-    expect(parseCommand("that's right", "verdict")).toBe("good");
-    expect(parseCommand("wrong", "verdict")).toBe("again");
   });
 });
 

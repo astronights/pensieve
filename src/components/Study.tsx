@@ -140,6 +140,8 @@ export default function Study({ deckId, category, season }: Props) {
   const [counting, setCounting] = useState(false);
   /** Voice listens for this card (LISTEN_DELAY_MS after it is shown). */
   const [ready, setReady] = useState(false);
+  /** The last thing the mic heard (answer, command or not), shown in the voice bar. */
+  const [heard, setHeard] = useState<string | null>(null);
   const readyRef = useRef(false);
   const countdown = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -347,6 +349,7 @@ export default function Study({ deckId, category, season }: Props) {
   const onHeard = (alts: string[]) => {
     if (!card || busy || !readyRef.current) return;
     const command = alts.map((a) => parseCommand(a, phase)).find(Boolean) as VoiceCommand | undefined;
+    setHeard(alts[0]);
     if (command === "stop") return setVoice("off");
     if (command === "repeat") return void speak(revealed ? back() : front());
     if (command === "more") return void speak(more());
@@ -360,6 +363,10 @@ export default function Study({ deckId, category, season }: Props) {
       cancelSpeech();
       stopCountdown();
       void answer(command);
+    } else if ((command === "overrule" || command === "confirm") && verdict) {
+      cancelSpeech();
+      stopCountdown();
+      void answer(verdict.ok === (command === "confirm") ? "good" : "again");
     }
   };
   useLayoutEffect(() => {
@@ -427,7 +434,7 @@ export default function Study({ deckId, category, season }: Props) {
           : phase === "question"
             ? "Say the answer or “show”"
             : phase === "verdict"
-              ? "“Right” or “wrong” to change"
+              ? "Say “nope” to overrule"
               : "Say “good” or “again”";
 
   return (
@@ -467,6 +474,11 @@ export default function Study({ deckId, category, season }: Props) {
               <strong>{voice === "read" ? "Read aloud" : "Voice"}</strong> ·{" "}
               {ready && status === "idle" ? "Not listening" : hint}
             </span>
+            {heard && (
+              <span className="voice-heard" title="What the mic heard last">
+                “{heard}”
+              </span>
+            )}
             {voice === "read" && (
               <select
                 aria-label="Read questions in"

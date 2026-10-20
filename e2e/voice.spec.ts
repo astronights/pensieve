@@ -102,6 +102,7 @@ test("voice: spoken answers are checked and counted, with commands and read-alou
   await expect(page.getByRole("button", { name: /^Voice answers/ })).toBeVisible();
   await say(page, "hi");
   await expect(card.locator(".verdict.ok")).toContainText("hi");
+  await expect(page.locator(".voice-heard")).toHaveText("“hi”"); // what the mic heard
   await expect(page.locator(".actions .good.pending")).toBeVisible();
   await expect(card).toContainText("Which river is longest?", { timeout: 5000 });
 
@@ -117,11 +118,11 @@ test("voice: spoken answers are checked and counted, with commands and read-alou
   expect(await starts()).toBe(before + 1);
   await expect(page.getByRole("button", { name: "Tap to listen" })).toHaveCount(0);
 
-  // A wrong answer shows ✗; "right" overrules it straight away.
+  // A wrong answer shows ✗; "nope" overrules it straight away.
   await say(page, "the amazon");
   await expect(card.locator(".verdict.wrong")).toBeVisible();
   await expect(page.locator(".actions .again.pending")).toBeVisible();
-  await say(page, "right");
+  await say(page, "nope");
   await expect(card).toContainText("hej");
   // "show" reveals without checking; then "good" answers.
   await say(page, "show answer");
@@ -154,7 +155,7 @@ test("voice: spoken answers are checked and counted, with commands and read-alou
   await say(page, "the amazon");
   await expect(card.locator(".verdict.wrong")).toBeVisible();
   await expect.poll(spoken).toContainEqual({ text: "Not quite.", lang: "en-US" });
-  await say(page, "wrong");
+  await say(page, "yes"); // accepts the ✗ without waiting
   // "hej" is learned by now, so the river card comes straight back, its streak reset.
   await expect(card.locator(".verdict")).toHaveCount(0);
   await expect(card).toContainText("Which river is longest?");
