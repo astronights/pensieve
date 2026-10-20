@@ -101,8 +101,8 @@ time it starts, so after a silence it waits for a tap on **Tap to listen** rathe
 | When | Say | Does |
 |---|---|---|
 | Question showing | *your answer* | Checks it, reveals the card with ✓ or ✗, and counts Good or Again after 3 seconds |
-| | "show" / "answer" | Reveals without checking (when you don't know) |
-| ✓ / ✗ showing | "right" / "wrong" | Overrules the check and answers straight away |
+| | "show" / "answer" / "pass" / "I don't know" | Reveals without checking |
+| ✓ / ✗ showing | "right" / "wrong" (also "yes"/"no", "that's right", "not right") | Overrules the check and answers straight away |
 | Answer showing | "good" / "yes", "again" / "no" | Answers |
 | Any time | "repeat", "more", "stop" | Reads the card again, reads the notes and explanation, turns voice off |
 

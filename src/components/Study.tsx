@@ -352,8 +352,9 @@ export default function Study({ deckId, category, season }: Props) {
     if (command === "more") return void speak(more());
     if (phase === "question") {
       cancelSpeech(); // answering while the question is read out
-      if (command !== "show")
-        setVerdict({ ok: checkAnswer(alts, answerTargets(card.back, extras.notes)), heard: alts[0] });
+      // A right answer counts even if it sounds like a command ("shoe" for chaussure).
+      const ok = checkAnswer(alts, answerTargets(card.back, extras.notes));
+      if (ok || command !== "show") setVerdict({ ok, heard: alts[0] });
       setRevealed(true);
     } else if (command === "good" || command === "again") {
       cancelSpeech();

@@ -139,6 +139,19 @@ describe("commands", () => {
     expect(parseCommand("the cat sat on the mat", "answer")).toBeNull();
   });
 
+  it("understands commands the way recognisers and accents spell them", () => {
+    for (const said of ["so", "Shoe.", "shaw", "show me", "please show", "I don't know", "no idea", "pass"])
+      expect(parseCommand(said, "question"), said).toBe("show");
+    for (const said of ["write", "Ride.", "that's right", "you're right", "yeah", "correct", "righ"])
+      expect(parseCommand(said, "verdict"), said).toBe("good");
+    for (const said of ["wrong", "rong", "that's wrong", "nope", "not right", "wromg"])
+      expect(parseCommand(said, "verdict"), said).toBe("again");
+    expect(parseCommand("not wrong", "verdict")).toBe("good");
+    // Near-misses never stop voice, and an answer that isn't a command stays an answer.
+    expect(parseCommand("step", "answer")).toBeNull();
+    expect(parseCommand("snowman", "question")).toBeNull();
+  });
+
   it("ignores hesitations", () => {
     expect(parseCommand("Um, show.", "question")).toBe("show");
     expect(parseCommand("uh good", "answer")).toBe("good");

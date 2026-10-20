@@ -194,60 +194,92 @@ export function checkAnswer(heard: string[], targets: string[][]): boolean {
 export type VoicePhase = "question" | "answer" | "verdict";
 export type VoiceCommand = "show" | "repeat" | "more" | "stop" | "good" | "again";
 
+/** How "right" and "wrong" (and yes/no) come out of a recogniser, especially with an accent. */
+const RIGHT = ["right", "write", "rite", "ride", "wright", "alright", "correct", "yes", "yeah", "yep", "yup"];
+const WRONG = ["wrong", "rong", "wrung", "incorrect", "no", "nope", "nah"];
+const word = (cmd: VoiceCommand, ...aliases: string[]) => Object.fromEntries(aliases.map((a) => [a, cmd]));
+
 const COMMANDS: Record<VoicePhase, Record<string, VoiceCommand>> = {
   // Before the reveal anything else is an answer, so "yes"/"no" stay usable as answers.
   question: {
-    show: "show",
-    answer: "show",
-    reveal: "show",
-    pass: "show",
-    repeat: "repeat",
-    stop: "stop",
+    ...word("show", "show", "shoe", "shows", "shown", "sho", "answer", "reveal", "pass", "skip"),
+    ...word("repeat", "repeat"),
+    ...word("stop", "stop"),
   },
   answer: {
-    good: "good",
-    yes: "good",
-    right: "good",
-    correct: "good",
-    next: "good",
-    again: "again",
-    no: "again",
-    wrong: "again",
-    repeat: "repeat",
-    more: "more",
-    stop: "stop",
+    ...word("good", "good", "next", ...RIGHT),
+    ...word("again", "again", ...WRONG),
+    ...word("repeat", "repeat"),
+    ...word("more", "more"),
+    ...word("stop", "stop"),
   },
-  // While the 2-second verdict is showing: confirm or flip it.
+  // While the ✓/✗ is showing: confirm or flip it.
   verdict: {
-    right: "good",
-    correct: "good",
-    good: "good",
-    yes: "good",
-    wrong: "again",
-    again: "again",
-    no: "again",
-    repeat: "repeat",
-    more: "more",
-    stop: "stop",
+    ...word("good", "good", ...RIGHT),
+    ...word("again", "again", ...WRONG),
+    ...word("repeat", "repeat"),
+    ...word("more", "more"),
+    ...word("stop", "stop"),
   },
 };
 
-/** A short utterance that is a command in this phase, else null (before the reveal: an answer). */
-/** Hesitations a verbatim transcript keeps ("um, show"). */
-const FILLERS = new Set(["um", "umm", "uh", "uhm", "er", "erm", "hmm", "ah", "oh", "okay", "ok", "so"]);
+/** Whole phrases for "show" before the reveal: not knowing is a reason to look. */
+const SHOW_PHRASES = new Set(["i don t know", "don t know", "dont know", "no idea", "show me", "so"]);
 
+/** Hesitations a verbatim transcript keeps ("um, show"). */
+const FILLERS = new Set([
+  "um",
+  "umm",
+  "uh",
+  "uhm",
+  "er",
+  "erm",
+  "hmm",
+  "ah",
+  "oh",
+  "okay",
+  "ok",
+  "so",
+  "that",
+  "s",
+  "it",
+  "is",
+  "you",
+  "re",
+  "please",
+]);
+
+/**
+ * A short utterance that is a command in this phase, else null (before the reveal: an answer).
+ * Allows one wrong letter in longer command words ("shaw", "righ"), since accents and recognisers
+ * spell them loosely; "not right" means wrong.
+ */
 export function parseCommand(text: string, phase: VoicePhase): VoiceCommand | null {
-  const w = text
+  const all = text
     .toLowerCase()
     .replace(/[^\p{L}\s]/gu, " ")
     .split(/\s+/)
-    .filter((x) => x && !FILLERS.has(x));
+    .filter(Boolean);
+  if (phase === "question" && SHOW_PHRASES.has(all.join(" "))) return "show";
+  const w = all.filter((x) => !FILLERS.has(x));
   if (w.length === 0 || w.length > 3) return null;
+  const commands = COMMANDS[phase];
+  const lookup = (x: string): VoiceCommand | null => {
+    if (commands[x]) return commands[x];
+    if (x.length < 4) return null;
+    // Only for the answering commands: a near-miss of "stop" ("step") mustn't switch voice off.
+    const near = Object.keys(commands).find(
+      (k) => k.length >= 4 && ["show", "good", "again"].includes(commands[k]) && levenshtein(k, x) <= 1,
+    );
+    return near ? commands[near] : null;
+  };
   // Before the reveal only the first word counts ("show answer"), so an answer like "TV show" is
   // still an answer; after it, the first command word anywhere wins ("that's right").
-  for (const word of phase === "question" ? w.slice(0, 1) : w) {
-    const cmd = COMMANDS[phase][word];
-    if (cmd) return cmd;
+  for (const x of phase === "question" ? w.slice(0, 1) : w) {
+    const cmd = lookup(x);
+    if (!cmd) continue;
+    if (w.includes("not") && (cmd === "good" || cmd === "again")) return cmd === "good" ? "again" : "good";
+    return cmd;
   }
   return null;
 }
