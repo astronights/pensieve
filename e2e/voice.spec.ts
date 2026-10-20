@@ -6,6 +6,7 @@ const PASSCODE = process.env.APP_PASSCODE ?? "";
 async function fakeSpeech(page: Page) {
   await page.addInitScript(() => {
     type Rec = {
+      onspeechstart?: () => void;
       onresult?: (e: unknown) => void;
       onerror?: (e: unknown) => void;
       onend?: () => void;
@@ -43,6 +44,11 @@ async function fakeSpeech(page: Page) {
       r.onresult?.({ resultIndex: r.results.length - 1, results: r.results });
       r.onend?.();
       return true;
+    };
+    w.__speechStart = () => {
+      const r = w.__listening as Rec | null;
+      r?.onspeechstart?.();
+      return !!r;
     };
     w.__silence = () => {
       const r = w.__listening as Rec | null;
@@ -125,8 +131,14 @@ test("voice: spoken answers are checked and counted, with commands and read-alou
   expect(await starts()).toBe(before + 1);
   await expect(page.getByRole("button", { name: "Tap to listen" })).toHaveCount(0);
 
-  // A wrong answer shows ✗; "nope" overrules it straight away.
+  // A wrong answer shows ✗; "nope" overrules it straight away, even when it comes in late: the
+  // card doesn't move on while the user is still speaking.
   await say(page, "the amazon");
+  await expect(card.locator(".verdict.wrong")).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { __speechStart: () => boolean }).__speechStart()))
+    .toBe(true);
+  await page.waitForTimeout(3500);
   await expect(card.locator(".verdict.wrong")).toBeVisible();
   await expect(page.locator(".actions .again.pending")).toBeVisible();
   await say(page, "nope");

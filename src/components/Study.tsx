@@ -34,6 +34,8 @@ const VOICE_KEY = "pensieve:voice";
 const langKey = (group: string) => `pensieve:voice-lang:${group}`;
 /** How long a spoken answer's ✓/✗ shows before it counts, so a misheard answer can be corrected. */
 export const VERDICT_MS = 3000;
+/** …plus up to this long while the user is still speaking or being transcribed at the end. */
+const VERDICT_GRACE_MS = 4000;
 /** Time to read a new card before listening starts (what's said before then is ignored). */
 export const LISTEN_DELAY_MS = 2000;
 
@@ -314,7 +316,7 @@ export default function Study({ deckId, category, season }: Props) {
   const phase: VoicePhase = !revealed ? "question" : verdict ? "verdict" : "answer";
 
   const languages = useMemo(() => [...new Set([accent, frontLang])], [accent, frontLang]);
-  const { status, speak, cancelSpeech, listenNow } = useVoice({
+  const { status, speak, cancelSpeech, listenNow, hearing } = useVoice({
     engine,
     languages,
     accepting: ready,
@@ -413,10 +415,18 @@ export default function Study({ deckId, category, season }: Props) {
       }
       if (!v || cancelled || latest.current.voice === "off") return;
       setCounting(true);
-      countdown.current = setTimeout(() => {
+      // When time is up, wait (a few seconds at most) while the user is still talking or their
+      // words are being transcribed: that may be a "nope" that arrives just after.
+      const until = Date.now() + VERDICT_MS + VERDICT_GRACE_MS;
+      const finish = () => {
+        if (hearing() && Date.now() < until) {
+          countdown.current = setTimeout(finish, 200);
+          return;
+        }
         countdown.current = null;
         void latest.current.answer(v.ok ? "good" : "again");
-      }, VERDICT_MS);
+      };
+      countdown.current = setTimeout(finish, VERDICT_MS);
     })();
     return () => {
       cancelled = true;

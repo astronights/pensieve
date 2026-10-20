@@ -76,7 +76,8 @@ test("voice with Gemini: the mic stays open and each utterance is transcribed on
   const requests: { mime_type: string; languages: string[]; audio: string }[] = [];
   await page.route("**/api/transcribe", async (route) => {
     requests.push(route.request().postDataJSON());
-    await route.fulfill({ json: { text: replies.shift() ?? "" } });
+    // The fake mic "speaks" every few seconds; after the first answer every clip is the second one.
+    await route.fulfill({ json: { text: (replies.length > 1 ? replies.shift() : replies[0]) ?? "" } });
   });
 
   await page.goto("/study/e2e-gemini");
