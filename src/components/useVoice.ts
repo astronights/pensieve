@@ -18,8 +18,6 @@ type Recognition = {
     | null;
   onerror: ((e: { error: string }) => void) | null;
   onend: (() => void) | null;
-  onspeechstart: (() => void) | null;
-  onspeechend: (() => void) | null;
   start(): void;
   abort(): void;
 };
@@ -128,8 +126,6 @@ export function useVoice({
     handlers.current = { onHeard, onFatal, engine, languages, accepting };
   });
   const thinking = useRef(false);
-  /** Browser engine: between the recogniser's speech start and its result. */
-  const speechActive = useRef(false);
   /** Silences in a row since the user last spoke or tapped (each restart after one dings). */
   const silences = useRef(0);
   const gemini = useRef<GeminiListener | null>(null);
@@ -194,7 +190,6 @@ export function useVoice({
         if (!result?.isFinal) break;
         handled = i + 1;
         heard = true;
-        speechActive.current = false;
         errors.current = 0;
         const alts = Array.from(result, (a) => {
           const t = a.transcript.trim();
@@ -206,8 +201,6 @@ export function useVoice({
         heardSomething(alts, Date.now());
       }
     };
-    r.onspeechstart = () => (speechActive.current = true);
-    r.onspeechend = () => (speechActive.current = false);
     r.onerror = (e) => {
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
         want.current = false;
@@ -218,7 +211,6 @@ export function useVoice({
     };
     r.onend = () => {
       if (rec.current === r) rec.current = null;
-      speechActive.current = false;
       if (errors.current >= 5) {
         want.current = false;
         handlers.current.onFatal("Voice recognition isn't working (it needs an internet connection).");
@@ -366,11 +358,5 @@ export function useVoice({
     start();
   }, [start]);
 
-  /** Whether the user is speaking now, or their words are still on the way (so don't move on yet). */
-  const hearing = useCallback(
-    () => (handlers.current.engine === "gemini" ? !!gemini.current?.hearing : speechActive.current),
-    [],
-  );
-
-  return { status, speak, cancelSpeech, listenNow, hearing };
+  return { status, speak, cancelSpeech, listenNow };
 }

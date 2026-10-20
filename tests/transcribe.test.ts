@@ -24,7 +24,7 @@ describe("Gemini transcription", () => {
         transcription_config: {
           mode: { type: "verbatim" },
           language_codes: ["en-US"],
-          custom_vocabulary: ["show", "answer", "good", "again", "right", "wrong", "repeat", "more", "stop"],
+          custom_vocabulary: ["good", "again", "repeat", "more", "stop"],
         },
       },
       store: false,

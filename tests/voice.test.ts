@@ -120,62 +120,28 @@ describe("answer checking", () => {
 });
 
 describe("commands", () => {
-  it("before the reveal only show/repeat/stop are commands; the rest is an answer", () => {
-    expect(parseCommand("show", "question")).toBe("show");
-    expect(parseCommand("Show answer", "question")).toBe("show");
+  it("before the reveal everything is an answer except repeat/stop", () => {
     expect(parseCommand("repeat", "question")).toBe("repeat");
     expect(parseCommand("stop", "question")).toBe("stop");
-    expect(parseCommand("yes", "question")).toBeNull();
-    expect(parseCommand("no", "question")).toBeNull();
-    expect(parseCommand("TV show", "question")).toBeNull();
+    for (const said of ["show", "Show answer", "yes", "no", "I don't know", "TV show"])
+      expect(parseCommand(said, "question"), said).toBeNull();
   });
 
-  it("after the reveal: good/again and their synonyms", () => {
-    expect(parseCommand("good", "answer")).toBe("good");
-    expect(parseCommand("yes", "answer")).toBe("good");
-    expect(parseCommand("again", "answer")).toBe("again");
-    expect(parseCommand("no", "answer")).toBe("again");
+  it("after a tapped reveal: good/again and the ways they come out of a recogniser", () => {
+    for (const said of ["good", "yes", "yeah", "write", "Ride.", "that's right", "correct", "righ", "uh good"])
+      expect(parseCommand(said, "answer"), said).toBe("good");
+    for (const said of ["again", "no", "nope", "wrong", "rong", "that's wrong", "not right", "wromg"])
+      expect(parseCommand(said, "answer"), said).toBe("again");
+    expect(parseCommand("not wrong", "answer")).toBe("good");
     expect(parseCommand("more", "answer")).toBe("more");
     expect(parseCommand("the cat sat on the mat", "answer")).toBeNull();
-  });
-
-  it("understands commands the way recognisers and accents spell them", () => {
-    for (const said of [
-      "so",
-      "Shoe.",
-      "shaw",
-      "sure",
-      "show me",
-      "please show",
-      "Show me the answer, please.",
-      "So, answer.",
-      "I don't know",
-      "no idea",
-      "pass",
-    ])
-      expect(parseCommand(said, "question"), said).toBe("show");
-    for (const said of ["write", "Ride.", "that's right", "you're right", "correct", "righ"])
-      expect(parseCommand(said, "answer"), said).toBe("good");
-    for (const said of ["wrong", "rong", "that's wrong", "not right", "wromg"])
-      expect(parseCommand(said, "answer"), said).toBe("again");
-    // "right"/"wrong" don't overrule a ✓/✗: only "nope" does.
-    expect(parseCommand("right", "verdict")).toBeNull();
-    expect(parseCommand("wrong", "verdict")).toBeNull();
-    // While the ✓/✗ shows, "nope" overrules the app's call and "yes" accepts it.
-    for (const said of ["nope", "No.", "nah", "nop"]) expect(parseCommand(said, "verdict"), said).toBe("overrule");
-    for (const said of ["yes", "yeah", "OK", "okay"]) expect(parseCommand(said, "verdict"), said).toBe("confirm");
-    // After a plain reveal, yes/no still mean good/again.
-    expect(parseCommand("nope", "answer")).toBe("again");
-    expect(parseCommand("yeah", "answer")).toBe("good");
-    expect(parseCommand("not wrong", "answer")).toBe("good");
-    // Near-misses never stop voice, and an answer that isn't a command stays an answer.
+    // A near-miss never stops voice.
     expect(parseCommand("step", "answer")).toBeNull();
-    expect(parseCommand("snowman", "question")).toBeNull();
   });
 
-  it("ignores hesitations", () => {
-    expect(parseCommand("Um, show.", "question")).toBe("show");
-    expect(parseCommand("uh good", "answer")).toBe("good");
+  it("nothing is listened for while the ✓/✗ of a spoken answer shows", () => {
+    for (const said of ["nope", "yes", "right", "wrong", "good", "again"])
+      expect(parseCommand(said, "verdict"), said).toBeNull();
   });
 });
 

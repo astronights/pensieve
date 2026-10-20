@@ -38,11 +38,6 @@ export class GeminiListener {
 
   constructor(private readonly events: GeminiListenerEvents) {}
 
-  /** Someone is speaking, or what they said is still being transcribed. */
-  get hearing() {
-    return this.inFlight > 0 || !!this.detector?.speaking;
-  }
-
   get open() {
     return this.stream !== null;
   }

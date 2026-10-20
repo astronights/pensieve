@@ -30,7 +30,7 @@ export function parseTranscribeInput(body: unknown): TranscribeInput {
 }
 
 /** Words the app listens for as commands; Gemini is nudged towards hearing them right. */
-export const COMMAND_WORDS = ["show", "answer", "good", "again", "right", "wrong", "repeat", "more", "stop"];
+export const COMMAND_WORDS = ["good", "again", "repeat", "more", "stop"];
 
 /**
  * The Interactions request: verbatim (no rewording of what was said), the user's English accent and

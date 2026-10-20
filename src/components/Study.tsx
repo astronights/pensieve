@@ -34,8 +34,6 @@ const VOICE_KEY = "pensieve:voice";
 const langKey = (group: string) => `pensieve:voice-lang:${group}`;
 /** How long a spoken answer's ✓/✗ shows before it counts, so a misheard answer can be corrected. */
 export const VERDICT_MS = 3000;
-/** …plus up to this long while the user is still speaking or being transcribed at the end. */
-const VERDICT_GRACE_MS = 4000;
 /** Time to read a new card before listening starts (what's said before then is ignored). */
 export const LISTEN_DELAY_MS = 2000;
 
@@ -316,13 +314,15 @@ export default function Study({ deckId, category, season }: Props) {
   const phase: VoicePhase = !revealed ? "question" : verdict ? "verdict" : "answer";
 
   const languages = useMemo(() => [...new Set([accent, frontLang])], [accent, frontLang]);
-  const { status, speak, cancelSpeech, listenNow, hearing } = useVoice({
+  const { status, speak, cancelSpeech, listenNow } = useVoice({
     engine,
     languages,
-    accepting: ready,
+    // Nothing is listened for while the ✓/✗ of a spoken answer shows.
+    accepting: ready && !verdict,
     active: voice !== "off",
-    // Listening starts with each card (and after each phrase); a silence ends it until a tap.
-    listen: voice !== "off" && !!card,
+    // Listening starts with each card (and after each phrase); a silence ends it until a tap. The
+    // browser's recogniser also stops during the ✓/✗ (each restart dings); Gemini keeps the mic open.
+    listen: voice !== "off" && !!card && (engine === "gemini" || !verdict),
     onHeard: (alts) => latest.current.onHeard(alts),
     onFatal: (message) => {
       setError(message);
@@ -349,7 +349,7 @@ export default function Study({ deckId, category, season }: Props) {
   // Latest values for speech callbacks, which fire long after the render that set them up.
   const latest = useRef({ onHeard: (() => {}) as (alts: string[]) => void, voice, answer, verdict });
   const onHeard = (alts: string[]) => {
-    if (!card || busy || !readyRef.current) return;
+    if (!card || busy || !readyRef.current || verdict) return;
     const command = alts.map((a) => parseCommand(a, phase)).find(Boolean) as VoiceCommand | undefined;
     setHeard(alts[0]);
     if (command === "stop") return setVoice("off");
@@ -357,18 +357,11 @@ export default function Study({ deckId, category, season }: Props) {
     if (command === "more") return void speak(more());
     if (phase === "question") {
       cancelSpeech(); // answering while the question is read out
-      // A right answer counts even if it sounds like a command ("shoe" for chaussure).
-      const ok = checkAnswer(alts, answerTargets(card.back, extras.notes));
-      if (ok || command !== "show") setVerdict({ ok, heard: alts[0] });
+      setVerdict({ ok: checkAnswer(alts, answerTargets(card.back, extras.notes)), heard: alts[0] });
       setRevealed(true);
     } else if (command === "good" || command === "again") {
       cancelSpeech();
-      stopCountdown();
       void answer(command);
-    } else if ((command === "overrule" || command === "confirm") && verdict) {
-      cancelSpeech();
-      stopCountdown();
-      void answer(verdict.ok === (command === "confirm") ? "good" : "again");
     }
   };
   useLayoutEffect(() => {
@@ -411,22 +404,14 @@ export default function Study({ deckId, category, season }: Props) {
         await speak(parts);
         // Interrupted by "repeat"/"more" still counts down; a new card cancels.
         if (cancelled) return;
-        listenNow();
+        if (!v) listenNow();
       }
       if (!v || cancelled || latest.current.voice === "off") return;
       setCounting(true);
-      // When time is up, wait (a few seconds at most) while the user is still talking or their
-      // words are being transcribed: that may be a "nope" that arrives just after.
-      const until = Date.now() + VERDICT_MS + VERDICT_GRACE_MS;
-      const finish = () => {
-        if (hearing() && Date.now() < until) {
-          countdown.current = setTimeout(finish, 200);
-          return;
-        }
+      countdown.current = setTimeout(() => {
         countdown.current = null;
         void latest.current.answer(v.ok ? "good" : "again");
-      };
-      countdown.current = setTimeout(finish, VERDICT_MS);
+      }, VERDICT_MS);
     })();
     return () => {
       cancelled = true;
@@ -442,9 +427,9 @@ export default function Study({ deckId, category, season }: Props) {
         : status === "thinking"
           ? "Transcribing…"
           : phase === "question"
-            ? "Say the answer or “show”"
+            ? "Say the answer"
             : phase === "verdict"
-              ? "Say “nope” to overrule"
+              ? "Tap the other button to change it"
               : "Say “good” or “again”";
 
   return (
@@ -482,7 +467,7 @@ export default function Study({ deckId, category, season }: Props) {
             <span className={`voice-dot ${status}`} aria-hidden="true" />
             <span className="voice-hint">
               <strong>{voice === "read" ? "Read aloud" : "Voice"}</strong> ·{" "}
-              {ready && status === "idle" ? "Not listening" : hint}
+              {ready && !verdict && status === "idle" ? "Not listening" : hint}
             </span>
             {heard && (
               <span className="voice-heard" title="What the mic heard last">
@@ -610,7 +595,7 @@ export default function Study({ deckId, category, season }: Props) {
                 </button>
               </div>
             )}
-            {voice !== "off" && ready && status === "idle" && (
+            {voice !== "off" && ready && !verdict && status === "idle" && (
               // Listening stopped after a silence: a mic button next to the answer buttons resumes it.
               <button
                 type="button"

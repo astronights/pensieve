@@ -31,7 +31,7 @@ installs as an app on Android and iOS.
 - **Browse decks.** Go through cards in random order with **Next**, and send the ones you miss into
   the Again/Good loop.
 - **Hands-free voice mode.** Say your answer and it's checked against the card (✓/✗), then counted
-  as Good or Again after 3 seconds unless you say "nope" to overrule it. Optionally reads each card aloud.
+  as Good or Again after 3 seconds (tap the other button to change it). Optionally reads each card aloud.
 - **Phone first.** Installable PWA, light and dark themes, landscape layout, and the next card is
   prefetched so answers feel instant.
 - **Import anything.** A JSON import API that updates content without ever resetting progress, plus
@@ -100,10 +100,8 @@ time it starts, so after a silence it waits for a tap on **Tap to listen** rathe
 
 | When | Say | Does |
 |---|---|---|
-| Question showing | *your answer* | Checks it, reveals the card with ✓ or ✗, and counts Good or Again after 3 seconds |
-| | "show" / "answer" / "pass" / "I don't know" | Reveals without checking |
-| ✓ / ✗ showing | "nope" / "yes" | "nope" overrules the check (✓ becomes Again, ✗ becomes Good); "yes" accepts it without waiting |
-| Answer showing | "good" / "yes", "again" / "no" | Answers |
+| Question showing | *your answer* | Checks it, reveals the card with ✓ or ✗, and counts Good or Again after 3 seconds (tap the other button to change it; nothing is listened for meanwhile) |
+| After tapping Show answer | "good" / "yes", "again" / "no" | Answers |
 | Any time | "repeat", "more", "stop" | Reads the card again, reads the notes and explanation, turns voice off |
 
 An answer is right when it contains the **bold** part of the card's answer (with "or" or "/", the bold part
