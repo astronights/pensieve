@@ -203,7 +203,21 @@ const word = (cmd: VoiceCommand, ...aliases: string[]) => Object.fromEntries(ali
 const COMMANDS: Record<VoicePhase, Record<string, VoiceCommand>> = {
   // Before the reveal anything else is an answer, so "yes"/"no" stay usable as answers.
   question: {
-    ...word("show", "show", "shoe", "shows", "shown", "sho", "answer", "reveal", "pass", "skip"),
+    ...word(
+      "show",
+      "show",
+      "shoe",
+      "shows",
+      "shown",
+      "sho",
+      "shore",
+      "sure",
+      "chow",
+      "answer",
+      "reveal",
+      "pass",
+      "skip",
+    ),
     ...word("repeat", "repeat"),
     ...word("stop", "stop"),
   },
@@ -268,8 +282,10 @@ export function parseCommand(text: string, phase: VoicePhase): VoiceCommand | nu
   // "OK" alone accepts the ✓/✗ (elsewhere it's just a filler).
   if (phase === "verdict" && all.length === 1 && COMMANDS.verdict[all[0]] === "confirm") return "confirm";
   const w = all.filter((x) => !FILLERS.has(x));
-  if (w.length === 0 || w.length > 3) return null;
+  if (w.length === 0) return null;
   const commands = COMMANDS[phase];
+  // A longer sentence is an answer, unless it starts with "show" ("show me the answer").
+  if (w.length > 3 && !(phase === "question" && commands[w[0]] === "show")) return null;
   const lookup = (x: string): VoiceCommand | null => {
     if (commands[x]) return commands[x];
     if (x.length < 4) return null;

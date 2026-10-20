@@ -31,8 +31,15 @@ async function fakeSpeech(page: Page) {
     w.__say = (text: string) => {
       const r = w.__listening as Rec | null;
       if (!r) return false;
+      const result = Object.assign([{ transcript: text }], { isFinal: true });
+      if (w.__restartList) {
+        // Chrome on Android sometimes keeps the session but starts its result list over.
+        r.results = [result];
+        r.onresult?.({ resultIndex: 0, results: r.results });
+        return true;
+      }
       w.__listening = null;
-      r.results.push(Object.assign([{ transcript: text }], { isFinal: true }));
+      r.results.push(result);
       r.onresult?.({ resultIndex: r.results.length - 1, results: r.results });
       r.onend?.();
       return true;
@@ -124,7 +131,9 @@ test("voice: spoken answers are checked and counted, with commands and read-alou
   await expect(page.locator(".actions .again.pending")).toBeVisible();
   await say(page, "nope");
   await expect(card).toContainText("hej");
-  // "show" reveals without checking; then "good" answers.
+  // "show" reveals without checking; then "good" answers, both heard in one session whose result
+  // list starts over for the second phrase (seen on Android).
+  await page.evaluate(() => Object.assign(window, { __restartList: true }));
   await say(page, "show answer");
   await expect(card).toContainText("hello, hi");
   await expect(card.locator(".verdict")).toHaveCount(0);
@@ -132,6 +141,7 @@ test("voice: spoken answers are checked and counted, with commands and read-alou
   // The river card counted as Good: one dot filled.
   await expect(card).toContainText("Which river is longest?");
   await expect(card.locator(".dot.learn.on")).toHaveCount(1);
+  await page.evaluate(() => Object.assign(window, { __restartList: false }));
 
   // Read aloud: the question in the deck's language, the answer in English.
   await page.getByRole("button", { name: /^Voice answers/ }).click();

@@ -181,7 +181,11 @@ export function useVoice({
     let heard = false; // the session ended after hearing something, not after a silence
     let previous = ""; // Android repeats earlier phrases at the start of later ones in a session
     r.onresult = (e) => {
-      for (let i = Math.max(handled, e.resultIndex); i < e.results.length; i++) {
+      // Normally results only grow, but Chrome on Android can restart the list (resultIndex back to
+      // 0) within a session; trust resultIndex then, so later phrases aren't skipped.
+      const from =
+        e.resultIndex < handled && e.results.length <= handled ? e.resultIndex : Math.max(handled, e.resultIndex);
+      for (let i = from; i < e.results.length; i++) {
         const result = e.results[i];
         if (!result?.isFinal) break;
         handled = i + 1;

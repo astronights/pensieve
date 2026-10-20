@@ -140,7 +140,19 @@ describe("commands", () => {
   });
 
   it("understands commands the way recognisers and accents spell them", () => {
-    for (const said of ["so", "Shoe.", "shaw", "show me", "please show", "I don't know", "no idea", "pass"])
+    for (const said of [
+      "so",
+      "Shoe.",
+      "shaw",
+      "sure",
+      "show me",
+      "please show",
+      "Show me the answer, please.",
+      "So, answer.",
+      "I don't know",
+      "no idea",
+      "pass",
+    ])
       expect(parseCommand(said, "question"), said).toBe("show");
     for (const said of ["write", "Ride.", "that's right", "you're right", "correct", "righ"])
       expect(parseCommand(said, "answer"), said).toBe("good");
