@@ -446,3 +446,25 @@ main.study > header { flex-wrap: wrap; row-gap: 0.5rem; }
 }
 .listen-label { display: none; }
 .voice-dot.thinking { background: var(--accent); animation: voice-pulse 0.8s ease-in-out infinite; }
+
+/* Search */
+.search { display: flex; flex-direction: column; gap: 0.75rem; }
+.search-input { width: 100%; font-size: 1rem; }
+.search-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.search-count { margin: 0; }
+.search-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+.search-hit {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
+  padding: 0.75rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  overflow-wrap: anywhere;
+}
+.search-where { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; font-size: 0.8rem; }
+.search-where .pill { font-size: 0.72rem; padding: 0.1rem 0.5rem; white-space: nowrap; }
+.search-front { font-weight: 600; }
+.search-back { color: var(--muted); }
+.search-front p, .search-back p { margin: 0; }

@@ -32,6 +32,8 @@ installs as an app on Android and iOS.
   the Again/Good loop.
 - **Hands-free voice mode.** Say your answer and it's checked against the card (✓/✗), then counted
   as Good or Again after 3 seconds (tap the other button to change it). Optionally reads each card aloud.
+- **Search.** Find cards in every deck by a few keywords (all must match; "quotes" keep a phrase
+  together) across question, answer, notes, category and tags, with each card's deck and progress.
 - **Phone first.** Installable PWA, light and dark themes, landscape layout, and the next card is
   prefetched so answers feel instant.
 - **Import anything.** A JSON import API that updates content without ever resetting progress, plus
@@ -154,6 +156,7 @@ Every route requires the session cookie or `Authorization: Bearer $APP_PASSCODE`
 | `POST /api/review` `{card_id, action: "bookmark", value}` | bookmark toggle |
 | `POST /api/import` `[cards]` or `{decks, cards}` | upserts by id and never touches progress; max 5000 cards per request |
 | `POST /api/transcribe` `{audio, mime_type, languages?}` | speech to text with Gemini (needs `GEMINI_API_KEY`); returns `{text}` |
+| `GET /api/search?q=` | cards containing every keyword (max 50, plus the `total`), with deck and status |
 | `GET` / `PATCH /api/settings` (UI at `/settings`) | `again_gap` (5), `good_gap` (15), `learned_after` (3), `review_gap` (50) |
 
 Card shape: `{id, deck, front, back, tags?, category?, media?: [{type: image|video|audio, url, side: front|back}], meta?: {season?, ...}}`.

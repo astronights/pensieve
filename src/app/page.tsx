@@ -12,6 +12,12 @@ export default async function Home() {
       <header>
         <h1>Pensieve</h1>
         <nav className="header-actions">
+          <Link href="/search" className="icon-button" aria-label="Search" title="Search cards">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+              <path d="M16 16l4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </Link>
           <Link href="/settings" className="icon-button" aria-label="Settings" title="Settings">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
               <path
