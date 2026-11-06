@@ -16,6 +16,12 @@ type Results = { query: string; total: number; cards: SearchHit[] };
 /** Search box over every card; results update as you type and the query is kept in the URL. */
 export default function Search({ initial }: { initial: string }) {
   const [query, setQuery] = useState(initial);
+  // Offline the page may be a saved copy made for another search: the address has the real one.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q") ?? "";
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (q !== initial) setQuery(q);
+  }, [initial]);
   const [results, setResults] = useState<Results | null>(null);
   const [error, setError] = useState<string | null>(null);
 
