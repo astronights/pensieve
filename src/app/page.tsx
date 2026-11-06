@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import DeckList from "@/components/DeckList";
+import SyncButton from "@/components/SyncButton";
 import { getDb } from "@/db";
 import { listDecks } from "@/lib/queue";
 
@@ -12,6 +13,7 @@ export default async function Home() {
       <header>
         <h1>Pensieve</h1>
         <nav className="header-actions">
+          <SyncButton />
           <Link href="/search" className="icon-button" aria-label="Search" title="Search cards">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
               <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
@@ -30,7 +32,21 @@ export default async function Home() {
             </svg>
           </Link>
           <form action="/api/logout" method="post">
-            <button type="submit">Log out</button>
+            <button type="submit" className="icon-button" aria-label="Log out" title="Log out">
+              <svg
+                viewBox="0 0 24 24"
+                width="22"
+                height="22"
+                aria-hidden="true"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 8l-4 4 4 4M6 12h10" />
+              </svg>
+            </button>
           </form>
         </nav>
       </header>

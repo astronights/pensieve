@@ -7,6 +7,7 @@ import BackLink from "./BackLink";
 import { cardExtras } from "@/lib/card-extras";
 import Markdown from "./Markdown";
 import { MediaList } from "./Media";
+import * as offline from "./offline";
 import { savedAccent, useVoice, VOICE_ENGINE_KEY, voiceSupported, type VoiceEngine } from "./useVoice";
 import {
   answerTargets,
@@ -20,8 +21,6 @@ import {
 } from "@/lib/voice";
 
 type Props = { deckId: string; category?: string; season?: string };
-type Counts = NextResult["counts"];
-
 /** Text longer than this reads better left-aligned at body size than as a big centred word. */
 const LONG_TEXT = 80;
 
@@ -116,12 +115,6 @@ function Streak({ streak, needed, learnedAfter }: NonNullable<NextResult["outcom
   );
 }
 
-async function json<T>(res: Response): Promise<T> {
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
-  return body as T;
-}
-
 /**
  * Study loop. To keep taps instant, the next card is prefetched while the current one is on
  * screen; answering shows it immediately and saves the answer in the background.
@@ -132,7 +125,11 @@ export default function Study({ deckId, category, season }: Props) {
   const [revealed, setRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [voice, setVoiceState] = useState<VoiceMode>("off");
+  const [voiceSetting, setVoiceState] = useState<VoiceMode>("off");
+  const [online, setOnline] = useState(true);
+  useEffect(() => offline.subscribe((s) => setOnline(s.online)), []);
+  // Voice needs the internet: offline it's off (the saved choice comes back with the connection).
+  const voice: VoiceMode = online ? voiceSetting : "off";
   const [voiceOk, setVoiceOk] = useState(false);
   const [langOverride, setLangOverride] = useState<string | null>(null);
   /** What was heard as an answer to this card and whether it was right; `counting` once the 2s run. */
@@ -179,13 +176,8 @@ export default function Study({ deckId, category, season }: Props) {
   const prefetch = useRef<{ after: string; result: Promise<NextResult> } | null>(null);
 
   const fetchNext = useCallback(
-    async (exclude?: string) => {
-      const qs = new URLSearchParams({ deck: deckId });
-      if (category) qs.set("category", category);
-      if (season) qs.set("season", season);
-      if (exclude) qs.set("exclude", exclude);
-      return json<NextResult>(await fetch(`/api/next?${qs}`, { cache: "no-store" }));
-    },
+    // From the server when it can be reached, else from the copy on the phone (offline.ts).
+    async (exclude?: string) => offline.fetchNext(deckId, { category, season, exclude }),
     [deckId, category, season],
   );
 
@@ -235,17 +227,7 @@ export default function Study({ deckId, category, season }: Props) {
       if (!card || busy) return;
       setError(null);
 
-      const save = lastSave.current
-        .catch(() => {})
-        .then(async () =>
-          json<{ counts?: Counts }>(
-            await fetch("/api/review", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ card_id: card.id, answer: choice, deck: deckId }),
-            }),
-          ),
-        );
+      const save = lastSave.current.catch(() => {}).then(() => offline.sendAnswer(card.id, choice, deckId));
       lastSave.current = save;
 
       const pending = prefetch.current?.after === card.id ? prefetch.current.result : null;
@@ -437,7 +419,12 @@ export default function Study({ deckId, category, season }: Props) {
       <header>
         <BackLink />
         <span className="header-actions">
-          {voiceOk && (
+          {!online && (
+            <span className="chip offline" title="Offline: answers are saved on this phone and synced later">
+              Offline
+            </span>
+          )}
+          {voiceOk && online && (
             <button
               type="button"
               className={`icon-button voice-button${voice !== "off" ? " on" : ""}`}

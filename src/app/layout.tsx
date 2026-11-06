@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
+import OfflineSupport from "@/components/OfflineSupport";
 import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 import "./globals.css";
 
@@ -8,7 +9,10 @@ export const metadata: Metadata = {
   description: "Flashcards",
   robots: { index: false, follow: false },
   icons: {
-    icon: [{ url: "/favicon.ico", sizes: "any" }, { url: "/icon.svg", type: "image/svg+xml" }],
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
     apple: "/apple-touch-icon.png",
   },
   appleWebApp: { capable: true, title: "Pensieve", statusBarStyle: "default" },
@@ -28,7 +32,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
   return (
     <html lang="en" data-theme={theme === "system" ? undefined : theme}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <OfflineSupport />
+      </body>
     </html>
   );
 }

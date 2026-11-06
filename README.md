@@ -34,6 +34,8 @@ installs as an app on Android and iOS.
   as Good or Again after 3 seconds (tap the other button to change it). Optionally reads each card aloud.
 - **Search.** Find cards in every deck by a few keywords (all must match; "quotes" keep a phrase
   together) across question, answer, notes, category and tags, with each card's deck and progress.
+- **Works offline.** Study, the deck list and search keep working without a connection; answers are
+  queued on the phone and synced when it's back (or with the Sync button).
 - **Phone first.** Installable PWA, light and dark themes, landscape layout, and the next card is
   prefetched so answers feel instant.
 - **Import anything.** A JSON import API that updates content without ever resetting progress, plus
@@ -135,6 +137,23 @@ British accent is understood better.
 
 The logic is in `src/lib/voice.ts`.
 
+## Offline
+
+The installed app works without a connection for studying, the deck list and search (not voice,
+settings, importing or card images/videos, which are links to other sites).
+
+- `public/sw.js` (service worker) saves the app's pages and code. After each sync the app asks it to
+  save every deck's study page, so decks you haven't opened yet open offline too.
+- A copy of the decks, cards, progress and settings is kept in the browser's IndexedDB
+  (`src/components/offline.ts`). `GET /api/sync?have=<version>` sends it; cards are only resent when
+  they changed. It's refreshed when the app opens, when the connection returns, every few minutes in
+  use, and with the **Sync** button (home screen; its badge counts answers waiting to be sent).
+- The app asks the server whenever it can be reached. When it can't, the next card and the answer
+  are worked out on the phone by `src/lib/engine.ts`, a copy of the server's rules (queue.ts,
+  review.ts) that `tests/engine.test.ts` runs side by side with the server over hundreds of random
+  answers. Offline answers are queued and sent in order with `POST /api/sync {answers}`; each carries
+  the time it was given, so one that reached the server already isn't counted twice.
+
 ## Install on a phone
 
 Pensieve is an installable web app (PWA). On Android, open it in Chrome and tap **Install app** in
@@ -156,6 +175,8 @@ Every route requires the session cookie or `Authorization: Bearer $APP_PASSCODE`
 | `POST /api/review` `{card_id, action: "bookmark", value}` | bookmark toggle |
 | `POST /api/import` `[cards]` or `{decks, cards}` | upserts by id and never touches progress; max 5000 cards per request |
 | `POST /api/transcribe` `{audio, mime_type, languages?}` | speech to text with Gemini (needs `GEMINI_API_KEY`); returns `{text}` |
+| `GET /api/sync?have=` | the offline copy: decks, progress, settings, and the cards unless `have` is the current version |
+| `POST /api/sync` `{answers: [{card_id, answer, at}]}` | applies answers given offline, in order, skipping ones already received |
 | `GET /api/search?q=` | cards containing every keyword (max 50, plus the `total`), with deck and status |
 | `GET` / `PATCH /api/settings` (UI at `/settings`) | `again_gap` (5), `good_gap` (15), `learned_after` (3), `review_gap` (50) |
 

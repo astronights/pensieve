@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { SearchHit } from "@/lib/search";
 import Markdown from "./Markdown";
+import * as offline from "./offline";
 
 const STATUS: Record<SearchHit["status"], { cls: string; label: string }> = {
   learned: { cls: "learned", label: "Learned" },
@@ -27,9 +28,8 @@ export default function Search({ initial }: { initial: string }) {
     const ctrl = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal, cache: "no-store" });
-        const body = await res.json();
-        if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+        // The server's search, or the copy on the phone when offline.
+        const body = await offline.search(q, ctrl.signal);
         setResults({ query: q, ...body });
         setError(null);
       } catch (e) {

@@ -3,6 +3,7 @@ import type { DB } from "@/db";
 import { cards, cardState, decks, type DeckKind, type MediaItem } from "@/db/schema";
 import { clientMeta } from "./card-extras";
 import { notFound } from "./errors";
+import { MIX_EVERY } from "./schedule";
 import { afterAgain, afterGood, getSettings, goodsNeeded } from "./settings";
 
 export type DeckSummary = {
@@ -154,8 +155,7 @@ const toDTO = ({ dueAt, ...r }: CardRow): CardDTO => ({
   bookmarked: r.bookmarked ?? false,
 });
 
-/** While several cards are due at once, every MIX_EVERY-th card shown is a new one (if any remain). */
-export const MIX_EVERY = 3;
+export { MIX_EVERY } from "./schedule";
 
 /** Answers given so far in a top-level deck and its sub-decks; cards come back by this count. */
 export async function groupPosition(db: DB, groupId: string): Promise<number> {

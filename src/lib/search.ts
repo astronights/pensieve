@@ -4,28 +4,11 @@ import type { DB } from "@/db";
 import { cards, cardState, decks } from "@/db/schema";
 import { clientMeta } from "./card-extras";
 import { badRequest } from "./errors";
+import { searchTerms, STRESS_MARKS } from "./text-search";
+
+export { searchTerms } from "./text-search";
 
 export const SEARCH_LIMIT = 50;
-
-/**
- * Keywords from a search box: words, or "quoted phrases" kept together. Lower-cased, without the
- * stress marks Russian cards carry and without Markdown escapes, the same as the text searched.
- */
-export function searchTerms(query: string): string[] {
-  const terms: string[] = [];
-  for (const m of query.matchAll(/"([^"]+)"|(\S+)/g)) {
-    const t = normalise(m[1] ?? m[2]);
-    if (t && !terms.includes(t)) terms.push(t);
-  }
-  return terms.slice(0, 10);
-}
-
-/** Combining grave and acute accents: the stress marks on Russian words. */
-const STRESS_MARKS = String.fromCharCode(0x300, 0x301);
-const STRESS = new RegExp(`[${STRESS_MARKS}]`, "g");
-
-const normalise = (s: string) =>
-  s.normalize("NFD").replace(STRESS, "").normalize("NFC").replace(/\\/g, "").toLowerCase().trim();
 
 /**
  * Everything on a card worth searching, as Postgres sees it: question, answer, category, tags and

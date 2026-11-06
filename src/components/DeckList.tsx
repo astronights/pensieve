@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { DeckSummary } from "@/lib/queue";
+import * as offline from "./offline";
 
 const STORAGE_KEY = "pensieve:expanded-decks";
 
@@ -35,8 +36,15 @@ function subtitle(deck: DeckSummary, subDecks: number): string {
 
 const studyHref = (id: string) => `/study/${encodeURIComponent(id)}`;
 
-export default function DeckList({ decks }: { decks: DeckSummary[] }) {
+export default function DeckList({ decks: fromServer }: { decks: DeckSummary[] }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Offline (or with answers not synced yet) the page may be a saved copy: count from the phone's data.
+  const [local, setLocal] = useState<DeckSummary[] | null>(null);
+  useEffect(() => {
+    void offline.load();
+    return offline.subscribe(() => setLocal(offline.offlineDecks()));
+  }, []);
+  const decks = local ?? fromServer;
 
   // Remember which decks are open on this device (best effort).
   useEffect(() => {

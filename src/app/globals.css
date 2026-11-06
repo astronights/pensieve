@@ -468,3 +468,26 @@ main.study > header { flex-wrap: wrap; row-gap: 0.5rem; }
 .search-front { font-weight: 600; }
 .search-back { color: var(--muted); }
 .search-front p, .search-back p { margin: 0; }
+.chip.offline { color: var(--muted); font-size: 0.8rem; font-weight: 600; padding: 0 0.6rem; }
+
+/* Sync */
+.sync-button { position: relative; }
+.sync-button.offline { color: var(--muted); }
+.sync-button.syncing svg { animation: sync-spin 1s linear infinite; }
+@keyframes sync-spin { to { transform: rotate(360deg); } }
+.sync-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+@media (prefers-reduced-motion: reduce) { .sync-button.syncing svg { animation: none; } }
